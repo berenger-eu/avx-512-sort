@@ -855,6 +855,7 @@ void testQs512(){
         Sort512::Sort<NumType,size_t>(array.get(), idx);
         assertNotSorted(array.get(), idx, "");
     }
+#if defined(_OPENMP)
     for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
         std::cout << "   " << idx << std::endl;
         std::unique_ptr<NumType[]> array(new NumType[idx]);
@@ -862,6 +863,7 @@ void testQs512(){
         Sort512::SortOmp<NumType,size_t>(array.get(), idx);
         assertNotSorted(array.get(), idx, "");
     }
+#endif
 }
 
 template <class NumType>

@@ -24,7 +24,10 @@
 #include <climits>
 #include <cfloat>
 #include <algorithm>
+
+#if defined(_OPENMP)
 #include <omp.h>
+#endif
 
 namespace Sort512 {
 
@@ -5946,6 +5949,8 @@ static void CoreSort(SortType array[], const IndexType left, const IndexType rig
     }
 }
 
+#if defined(_OPENMP)
+
 template <class SortType, class IndexType = size_t>
 static inline void CoreSortTask(SortType array[], const IndexType left, const IndexType right, const int deep){
     static const int SortLimite = 16*64/sizeof(SortType);
@@ -5991,6 +5996,8 @@ static inline void SortOmp(SortType array[], const IndexType size){
         }
     }
 }
+#endif
+
 }
 
 
