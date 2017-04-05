@@ -1,0 +1,7 @@
+sort512test:
+  script:
+    - g++ -DNDEBUG -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512pf -mavx512er -mavx512cd -fopenmp sort512test.cpp -o sort512test.gcc.exe
+    - sde64 -knl -- ./sort512test.gcc.exe
+  tags:
+    - gcc
+    - sde
