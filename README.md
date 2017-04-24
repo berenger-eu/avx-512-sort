@@ -3,9 +3,13 @@ Berenger Bramas - MPCDF (berenger.bramas@mpcdf.mpg.de)
 ## AVX-512 sort functions
 
 This project is a small library that provides fast functions to sort array of int or double using AVX-512.
-A paper describes the different strategies but it is currently under review, please pull later to know more.
+A paper describes the different strategies, it is currently under review, but drafts are available at:
+arxiv
+or
+https://hal.inria.fr/hal-01512970
 
-The branch `paper` contains some durty files that were used for benchmarks,
+
+The branch `paper` contains some not very clean files that were used for benchmarks,
 wherease the current master branch provides an header only library:
 - sort512.hpp : the library that can be directly include in any code
 - sort512test.cpp : some unit tests (can be used for examples)
