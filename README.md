@@ -4,7 +4,7 @@ Berenger Bramas - MPCDF (berenger.bramas@mpcdf.mpg.de)
 
 This project is a small library that provides fast functions to sort array of int or double using AVX-512.
 A paper describes the different strategies, it is currently under review, but drafts are available at:
-arxiv
+https://arxiv.org/abs/1704.08579
 or
 https://hal.inria.fr/hal-01512970
 
