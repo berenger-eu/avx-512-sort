@@ -6,7 +6,9 @@ This project is a small library that provides fast functions to sort array of in
 A paper describes the different strategies, it is currently under review, but drafts are available at:
 https://arxiv.org/abs/1704.08579
 or
-https://hal.inria.fr/hal-01512970
+https://hal.inria.fr/hal-01512970 .
+This paper presents results for the KNL architecture.
+An appendix that contains results for the Skylake architecture is available at http://berenger.eu/blog/wp-content/uploads/2017/06/avxsort.pdf or https://datashare.rzg.mpg.de/s/QCBTOdc5r0daqNt .
 
 
 The branch `paper` contains some not very clean files that were used for benchmarks,
