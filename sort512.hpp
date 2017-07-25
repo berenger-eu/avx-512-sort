@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////
 /// Code to sort an array of integer or double
-/// using avx 512 (targeting intel KNL).
+/// using avx 512 (targeting intel KNL/SKL).
 /// By berenger.bramas@mpcdf.mpg.de 2017.
 /// Licence is MIT.
 /// Comes without any warranty.
@@ -14,8 +14,12 @@
 /// (should be less than 16 AVX512 vectors)
 ///
 /// To compile such flags can be used to enable avx 512 and openmp:
+/// - KNL
 /// Gcc : -mavx512f -mavx512pf -mavx512er -mavx512cd -fopenmp
 /// Intel : -xCOMMON-AVX512 -xMIC-AVX512 -qopenmp
+/// - SKL
+/// Gcc : -mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq -fopenmp
+/// Intel : -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp
 //////////////////////////////////////////////////////////
 #ifndef SORT512_HPP
 #define SORT512_HPP
