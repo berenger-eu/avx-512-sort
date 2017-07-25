@@ -10,6 +10,19 @@
 /// Gcc : g++ -DNDEBUG -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512pf -mavx512er -mavx512cd -fopenmp main.cpp -o test.gcc.exe
 /// Intel : icpc -DNDEBUG -O3 -std=c++11 -xCOMMON-AVX512 -xMIC-AVX512 -qopenmp main.cpp -o test.intel.exe
 ///
+///
+/// SKL:
+/// Gcc : g++ -DNDEBUG -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq -fopenmp main.cpp -o test.gcc.exe
+/// Intel : icpc -DNDEBUG -O3 -std=c++11 -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp main.cpp -o test.intel.exe
+///
+/// With Ipp:
+/// Gcc : g++ -DNDEBUG -DUSE_IPP -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512pf -mavx512er -mavx512cd -fopenmp main.cpp -o test.gcc.exe -I $IPPROOT/include -L $IPPROOT/lib/intel64 -lippi -lipps -lippcore -Wl,-rpath=$IPPROOT/lib/intel64
+/// Intel : icpc -DNDEBUG -DUSE_IPP -O3 -std=c++11 -xCOMMON-AVX512 -xMIC-AVX512 -qopenmp main.cpp -o test.intel.exe  -I $IPPROOT/include -L $IPPROOT/lib/intel64 -lippi -lipps -lippcore -Wl,-rpath,$IPPROOT/lib/intel64
+/// 
+/// SKL IPP:
+/// Gcc : g++ -DNDEBUG -DUSE_IPP -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq -fopenmp main.cpp -o test.gcc.exe  -I $IPPROOT/include -L $IPPROOT/lib/intel64 -lippi -lipps -lippcore -Wl,-rpath=$IPPROOT/lib/intel64
+/// Intel : icpc -DNDEBUG -DUSE_IPP -O3 -std=c++11 -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp main.cpp -o test.intel.exe  -I $IPPROOT/include -L $IPPROOT/lib/intel64 -lippi -lipps -lippcore -Wl,-rpath,$IPPROOT/lib/intel64
+///
 /// Numa:
 /// In Flat mode list with : numactl --hardware
 /// Then run with : numactl --physcpubind=8 --membind=1  EXEC
@@ -30,6 +43,93 @@
 #include <stdexcept>
 #include <climits>
 #include <cfloat>
+#include <cmath>
+
+
+
+#include <cstdlib>
+
+// Default alignement for the complete application by redirecting the new operator
+static const int DefaultMemAlignement = 128;
+
+namespace aligned_malloc {
+
+template <std::size_t AlignementValue>
+inline void* malloc(const std::size_t inSize){
+    if(inSize == 0){
+        return nullptr;
+    }
+
+    // Ensure it is a power of 2
+    static_assert(AlignementValue != 0 && ((AlignementValue-1)&AlignementValue) == 0, "Alignement must be a power of 2");
+    // We will need to store the adress of the real blocks
+    const std::size_t sizeForAddress = (AlignementValue < sizeof(unsigned char*)? sizeof(unsigned char*) : AlignementValue);
+
+    unsigned char* allocatedMemory      = reinterpret_cast<unsigned char*>(std::malloc(inSize + AlignementValue-1 + sizeForAddress));
+    unsigned char* alignedMemoryAddress = reinterpret_cast<unsigned char*>((reinterpret_cast<std::size_t>(allocatedMemory) + AlignementValue-1 + sizeForAddress) & ~static_cast<std::size_t>(AlignementValue-1));
+    unsigned char* ptrForAddress        = (alignedMemoryAddress - sizeof(unsigned char*));
+
+    // Save allocated adress
+    *reinterpret_cast<unsigned char**>(ptrForAddress) = allocatedMemory;
+    // Return aligned address
+    return reinterpret_cast<void*>(alignedMemoryAddress);
+}
+
+inline void free(void* ptrToFree){
+    if( ptrToFree ){
+        unsigned char** storeRealAddress = reinterpret_cast<unsigned char**>(reinterpret_cast<unsigned char*>(ptrToFree) - sizeof(unsigned char*));
+        std::free(*storeRealAddress);
+    }
+}
+}
+
+
+// Regular scalar new
+void* operator new(std::size_t n) {
+    void* const allocated = aligned_malloc::malloc<DefaultMemAlignement>(n);
+    if(allocated){
+        return allocated;
+    }
+    throw std::bad_alloc();
+    return allocated;
+}
+
+void* operator new[]( std::size_t n ) {
+    void* const allocated = aligned_malloc::malloc<DefaultMemAlignement>(n);
+    if(allocated){
+        return allocated;
+    }
+    throw std::bad_alloc();
+    return allocated;
+}
+
+void* operator new  ( std::size_t n, const std::nothrow_t& tag){
+    void* const allocated = aligned_malloc::malloc<DefaultMemAlignement>(n);
+    return allocated;
+}
+
+void* operator new[] ( std::size_t n, const std::nothrow_t& tag){
+    void* const allocated = aligned_malloc::malloc<DefaultMemAlignement>(n);
+    return allocated;
+}
+
+// Regular scalar delete
+void operator delete(void* p) {
+    aligned_malloc::free(p);
+}
+
+void operator delete[](void* p) {
+    aligned_malloc::free(p);
+}
+
+void operator delete  ( void* p, const std::nothrow_t& /*tag*/) {
+    aligned_malloc::free(p);
+}
+
+void operator delete[]( void* p, const std::nothrow_t& /*tag*/) {
+    aligned_malloc::free(p);
+}
+
 
 class dtimer {
     using double_second_time = std::chrono::duration<double, std::ratio<1, 1>>;
@@ -141,6 +241,23 @@ void printHist(const ObjectClass array[], const int size, const ObjectClass maxv
     }
     std::cout << "\n";
 }
+
+
+
+void testVecIndex(const __m512i& input, __m512i& input_val, const std::string& label){
+    int array[16];
+    _mm512_storeu_si512(array, input);
+
+    int values[16];
+    _mm512_storeu_si512(values, input_val);
+
+    for( int idx = 0 ; idx < 16 ; ++idx){
+        if(values[idx] != array[idx]*100+1){
+            std::cout << "Error at position " << idx << " for label " << label << std::endl;
+        }
+    }
+}
+
 
 ////////////////////////////////////////////////////////////
 /// Sort AVX512 Vec Functions
@@ -3273,8 +3390,150 @@ inline __m512i SortVecBitFull(__m512i input){
     return input;
 }
 
+
+inline void SortVecBitFull_pair(__m512i& input, __m512i& values){
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(12, 13, 14, 15, 8, 9, 10, 11,
+                                              4, 5, 6, 7, 0, 1, 2, 3);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(8, 9, 10, 11, 12, 13, 14, 15,
+                                              0, 1, 2, 3, 4, 5, 6, 7);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+}
+
 inline void SortVecBitFull(int* __restrict__ ptr1){
     _mm512_storeu_si512(ptr1, SortVecBitFull(_mm512_loadu_si512(ptr1)));
+}
+
+inline void SortVecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ ptrVal){
+    __m512i v = _mm512_loadu_si512(ptr1);
+    __m512i v_val = _mm512_loadu_si512(ptrVal);
+    SortVecBitFull_pair(v, v_val);
+    _mm512_storeu_si512(ptr1, v);
+    _mm512_storeu_si512(ptrVal, v_val);
 }
 
 
@@ -3404,6 +3663,108 @@ inline void ExchangeAndSort(__m512i& input, __m512i& input2 ){
     }
 }
 
+
+inline void ExchangeAndSort_pair(__m512i& input, __m512i& input2,
+                                 __m512i& input_val, __m512i& input2_val){
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i tmp_input = _mm512_min_epi32(input2, permNeigh);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, permNeigh);
+
+        __m512i input_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input_val);
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, permNeigh, _MM_CMPINT_EQ ),
+                                       input_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+         __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+
+         input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                        input_val);
+         input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                        input2_val);
+
+         input = tmp_input;
+         input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+         __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+
+         input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                        input_val);
+         input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                        input2_val);
+
+         input = tmp_input;
+         input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+         __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+
+         input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                        input_val);
+         input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                        input2_val);
+
+         input = tmp_input;
+         input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+         __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+         input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                        input_val);
+         input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                        input2_val);
+
+         input = tmp_input;
+         input2 = tmp_input2;
+    }
+}
+
+
 inline void Sort2VecBitFull(__m512i& input, __m512i& input2 ){
     {
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
@@ -3528,12 +3889,230 @@ inline void Sort2VecBitFull(__m512i& input, __m512i& input2 ){
     ExchangeAndSort(input,input2);
 }
 
+
+inline void Sort2VecBitFull_pair(__m512i& input, __m512i& input2,
+                                 __m512i& input_val, __m512i& input2_val){
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(12, 13, 14, 15, 8, 9, 10, 11,
+                                              4, 5, 6, 7, 0, 1, 2, 3);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(8, 9, 10, 11, 12, 13, 14, 15,
+                                              0, 1, 2, 3, 4, 5, 6, 7);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    ExchangeAndSort_pair(input,input2,input_val,input2_val);
+}
+
 inline void Sort2VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr2);
     Sort2VecBitFull(input1, input2);
     _mm512_storeu_si512(ptr1, input1);
     _mm512_storeu_si512(ptr2, input2);
+}
+
+inline void Sort2VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input1 = _mm512_loadu_si512(ptr1);
+    __m512i input2 = _mm512_loadu_si512(ptr1+16);
+    __m512i input1_val = _mm512_loadu_si512(values);
+    __m512i input2_val = _mm512_loadu_si512(values+16);
+    Sort2VecBitFull_pair(input1, input2, input1_val, input2_val);
+    _mm512_storeu_si512(ptr1, input1);
+    _mm512_storeu_si512(ptr1+16, input2);
+    _mm512_storeu_si512(values, input1_val);
+    _mm512_storeu_si512(values+16, input2_val);
 }
 
 
@@ -3680,6 +4259,151 @@ inline void Sort3VecBitFull(__m512i& input, __m512i& input2, __m512i& input3 ){
     }
 }
 
+inline void Sort3VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val){
+    Sort2VecBitFull_pair(input, input2, input_val, input2_val);
+    SortVecBitFull_pair(input3, input3_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i tmp_input3 = _mm512_max_epi32(input2, permNeigh);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh);
+
+        __m512i input3_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input3_val);
+        input3_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input3, permNeigh, _MM_CMPINT_EQ ),
+                                       input3_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input3_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input3 = tmp_input3;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+}
+
+
 inline void Sort3VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr2);
@@ -3688,6 +4412,23 @@ inline void Sort3VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr1, input1);
     _mm512_storeu_si512(ptr2, input2);
     _mm512_storeu_si512(ptr3, input3);
+}
+
+inline void Sort3VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values){
+    __m512i input1 = _mm512_loadu_si512(ptr1);
+    __m512i input2 = _mm512_loadu_si512(ptr1+16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+32);
+    __m512i input1_val = _mm512_loadu_si512(values);
+    __m512i input2_val = _mm512_loadu_si512(values+16);
+    __m512i input3_val = _mm512_loadu_si512(values+32);
+    Sort3VecBitFull_pair(input1, input2, input3,
+                         input1_val, input2_val, input3_val);
+    _mm512_storeu_si512(ptr1, input1);
+    _mm512_storeu_si512(ptr1+16, input2);
+    _mm512_storeu_si512(ptr1+32, input3);
+    _mm512_storeu_si512(values, input1_val);
+    _mm512_storeu_si512(values+16, input2_val);
+    _mm512_storeu_si512(values+32, input3_val);
 }
 
 
@@ -3875,6 +4616,206 @@ inline void Sort4VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
 }
 
+inline void Sort4VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val){
+    Sort2VecBitFull_pair(input, input2, input_val, input2_val);
+    Sort2VecBitFull_pair(input3, input4, input3_val, input4_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+
+        __m512i tmp_input4 = _mm512_max_epi32(input, permNeigh4);
+        __m512i tmp_input = _mm512_min_epi32(input, permNeigh4);
+
+        __m512i tmp_input3 = _mm512_max_epi32(input2, permNeigh3);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh3);
+
+
+        __m512i input4_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input4_val);
+        input4_val = _mm512_mask_mov_epi32(input_val, _mm512_cmp_epi32_mask(tmp_input4, permNeigh4, _MM_CMPINT_EQ ),
+                                       input4_val_perm);
+        input_val = _mm512_mask_mov_epi32(input4_val_perm, _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+
+        __m512i input3_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input3_val);
+        input3_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input3, permNeigh3, _MM_CMPINT_EQ ),
+                                       input3_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input3_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+}
+
 inline void Sort4VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr2);
@@ -3885,6 +4826,27 @@ inline void Sort4VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr2, input2);
     _mm512_storeu_si512(ptr3, input3);
     _mm512_storeu_si512(ptr4, input4);
+}
+
+inline void Sort4VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input1 = _mm512_loadu_si512(ptr1);
+    __m512i input2 = _mm512_loadu_si512(ptr1+16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+32);
+    __m512i input4 = _mm512_loadu_si512(ptr1+48);
+    __m512i input1_val = _mm512_loadu_si512(values);
+    __m512i input2_val = _mm512_loadu_si512(values+16);
+    __m512i input3_val = _mm512_loadu_si512(values+32);
+    __m512i input4_val = _mm512_loadu_si512(values+48);
+    Sort4VecBitFull_pair(input1, input2, input3, input4,
+                         input1_val, input2_val, input3_val, input4_val);
+    _mm512_storeu_si512(ptr1, input1);
+    _mm512_storeu_si512(ptr1+16, input2);
+    _mm512_storeu_si512(ptr1+32, input3);
+    _mm512_storeu_si512(ptr1+48, input4);
+    _mm512_storeu_si512(values, input1_val);
+    _mm512_storeu_si512(values+16, input2_val);
+    _mm512_storeu_si512(values+32, input3_val);
+    _mm512_storeu_si512(values+48, input4_val);
 }
 
 
@@ -4017,6 +4979,250 @@ inline void Sort5VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
 }
 
+inline void Sort5VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4, __m512i& input5,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val, __m512i& input5_val){
+    Sort4VecBitFull_pair(input, input2, input3, input4,
+                         input_val, input2_val, input3_val, input4_val);
+    SortVecBitFull_pair(input5, input5_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+
+        __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+
+        __m512i input5_val_copy = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
+        input5_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input5, permNeigh5, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input5 = tmp_input5;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+}
+
 inline void Sort5VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4, int* __restrict__ ptr5 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr2);
@@ -4029,6 +5235,31 @@ inline void Sort5VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr3, input3);
     _mm512_storeu_si512(ptr4, input4);
     _mm512_storeu_si512(ptr5, input5);
+}
+
+inline void Sort5VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values){
+    __m512i input1 = _mm512_loadu_si512(ptr1);
+    __m512i input2 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input1_val = _mm512_loadu_si512(values);
+    __m512i input2_val = _mm512_loadu_si512(values+1*16);
+    __m512i input3_val = _mm512_loadu_si512(values+2*16);
+    __m512i input4_val = _mm512_loadu_si512(values+3*16);
+    __m512i input5_val = _mm512_loadu_si512(values+4*16);
+    Sort5VecBitFull_pair(input1, input2, input3, input4, input5,
+                    input1_val, input2_val, input3_val, input4_val, input5_val);
+    _mm512_storeu_si512(ptr1, input1);
+    _mm512_storeu_si512(ptr1+1*16, input2);
+    _mm512_storeu_si512(ptr1+2*16, input3);
+    _mm512_storeu_si512(ptr1+3*16, input4);
+    _mm512_storeu_si512(ptr1+4*16, input5);
+    _mm512_storeu_si512(values, input1_val);
+    _mm512_storeu_si512(values+1*16, input2_val);
+    _mm512_storeu_si512(values+2*16, input3_val);
+    _mm512_storeu_si512(values+3*16, input4_val);
+    _mm512_storeu_si512(values+4*16, input5_val);
 }
 
 
@@ -4187,6 +5418,304 @@ inline void Sort6VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
 }
 
+
+inline void Sort6VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                                             __m512i& input5_val, __m512i& input6_val){
+    Sort4VecBitFull_pair(input, input2, input3, input4,
+                         input_val, input2_val, input3_val, input4_val);
+    Sort2VecBitFull_pair(input5, input6, input5_val, input6_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+
+        __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+
+        __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+
+
+        __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
+        input5_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input5, permNeigh5, _MM_CMPINT_EQ ),
+                                       input5_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input5_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input6_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input6_val);
+        input6_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input6, permNeigh6, _MM_CMPINT_EQ ),
+                                       input6_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input6_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input5 = tmp_input5;
+        input4 = tmp_input4;
+
+        input6 = tmp_input6;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+}
+
 inline void Sort6VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
             int* __restrict__ ptr5, int* __restrict__ ptr6 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
@@ -4202,6 +5731,36 @@ inline void Sort6VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr4, input4);
     _mm512_storeu_si512(ptr5, input5);
     _mm512_storeu_si512(ptr6, input6);
+}
+
+
+inline void Sort6VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    Sort6VecBitFull_pair(input0,input1,input2,input3,input4,input5,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
 }
 
 
@@ -4384,6 +5943,360 @@ inline void Sort7VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
 }
 
+
+inline void Sort7VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                __m512i& input5_val, __m512i& input6_val, __m512i& input7_val){
+    Sort4VecBitFull_pair(input, input2, input3, input4,
+                         input_val, input2_val, input3_val, input4_val);
+    Sort3VecBitFull_pair(input5, input6, input7,
+                         input5_val, input6_val, input7_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+
+        __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+
+        __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+
+        __m512i tmp_input7 = _mm512_max_epi32(input2, permNeigh7);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh7);
+
+
+        __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
+        input5_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input5, permNeigh5, _MM_CMPINT_EQ ),
+                                       input5_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input5_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input6_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input6_val);
+        input6_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input6, permNeigh6, _MM_CMPINT_EQ ),
+                                       input6_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input6_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        __m512i input7_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input7_val);
+        input7_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input7, permNeigh7, _MM_CMPINT_EQ ),
+                                       input7_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input7_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+
+        input5 = tmp_input5;
+        input4 = tmp_input4;
+
+        input6 = tmp_input6;
+        input3 = tmp_input3;
+
+        input7 = tmp_input7;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xFF00, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xF0F0, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xCCCC, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xAAAA, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+}
+
 inline void Sort7VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
             int* __restrict__ ptr5, int* __restrict__ ptr6, int* __restrict__ ptr7 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
@@ -4402,6 +6315,40 @@ inline void Sort7VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr6, input6);
     _mm512_storeu_si512(ptr7, input7);
 }
+
+inline void Sort7VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    Sort7VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+}
+
 
 inline void Sort8VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8 ){
@@ -4611,6 +6558,427 @@ inline void Sort8VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
 }
 
+
+inline void Sort8VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                 __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val){
+    Sort4VecBitFull_pair(input, input2, input3, input4,
+                         input_val, input2_val, input3_val, input4_val);
+    Sort4VecBitFull_pair(input5, input6, input7, input8,
+                         input5_val, input6_val, input7_val, input8_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+
+        __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+
+        __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+
+        __m512i tmp_input7 = _mm512_max_epi32(input2, permNeigh7);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh7);
+
+        __m512i tmp_input8 = _mm512_max_epi32(input, permNeigh8);
+        __m512i tmp_input = _mm512_min_epi32(input, permNeigh8);
+
+
+        __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
+        input5_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input5, permNeigh5, _MM_CMPINT_EQ ),
+                                       input5_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input5_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input6_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input6_val);
+        input6_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input6, permNeigh6, _MM_CMPINT_EQ ),
+                                       input6_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input6_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        __m512i input7_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input7_val);
+        input7_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input7, permNeigh7, _MM_CMPINT_EQ ),
+                                       input7_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input7_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        __m512i input8_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input8_val);
+        input8_val = _mm512_mask_mov_epi32(input_val, _mm512_cmp_epi32_mask(tmp_input8, permNeigh8, _MM_CMPINT_EQ ),
+                                       input8_val_perm);
+        input_val = _mm512_mask_mov_epi32(input8_val_perm, _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+
+
+        input5 = tmp_input5;
+        input4 = tmp_input4;
+
+        input6 = tmp_input6;
+        input3 = tmp_input3;
+
+        input7 = tmp_input7;
+        input2 = tmp_input2;
+
+        input8 = tmp_input8;
+        input = tmp_input;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input6;
+        __m512i tmp_input6 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
+        __m512i input6_val_copy = input6_val;
+        input6_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input6, inputCopy, _MM_CMPINT_EQ ),
+                                       input6_val_copy);
+        input8_val = _mm512_mask_mov_epi32(input6_val_copy, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input6 = tmp_input6;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i inputCopy = input7;
+        __m512i tmp_input7 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
+        __m512i input7_val_copy = input7_val;
+        input7_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input7, inputCopy, _MM_CMPINT_EQ ),
+                                       input7_val_copy);
+        input8_val = _mm512_mask_mov_epi32(input7_val_copy, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xFF00, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xFF00, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xF0F0, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xF0F0, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xCCCC, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xCCCC, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xAAAA, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xAAAA, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+}
+
 inline void Sort8VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
             int* __restrict__ ptr5, int* __restrict__ ptr6, int* __restrict__ ptr7, int* __restrict__ ptr8 ){
     __m512i input1 = _mm512_loadu_si512(ptr1);
@@ -4631,6 +6999,44 @@ inline void Sort8VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr7, input7);
     _mm512_storeu_si512(ptr8, input8);
 }
+
+inline void Sort8VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    Sort8VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+}
+
 
 inline void Finish1VecBitFull(__m512i& input){
     {
@@ -4664,6 +7070,61 @@ inline void Finish1VecBitFull(__m512i& input){
         __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+    }
+}
+
+inline void Finish1VecBitFull_pair(__m512i& input, __m512i& values){
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+
+        values = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, values), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       values);
+
+        input = tmp_input;
     }
 }
 
@@ -4720,6 +7181,103 @@ inline void Finish2VecBitFull(__m512i& input, __m512i& input2){
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
         input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+    }
+}
+
+inline void Finish2VecBitFull_pair(__m512i& input, __m512i& input2,
+                                   __m512i& input_val, __m512i& input2_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
     }
 }
 
@@ -4797,6 +7355,144 @@ inline void Finish3VecBitFull(__m512i& input, __m512i& input2, __m512i& input3){
         input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
         input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
         input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+    }
+}
+
+inline void Finish3VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
     }
 }
 
@@ -4900,6 +7596,198 @@ inline void Finish4VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, 
         input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
         input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
         input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+    }
+}
+
+inline void Finish4VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
     }
 }
 
@@ -5025,6 +7913,241 @@ inline void Finish5VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, 
         input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
         input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
         input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+    }
+}
+
+inline void Finish5VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                   __m512i& input5_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input5_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
     }
 }
 
@@ -5178,6 +8301,296 @@ inline void Finish6VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, 
         input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
     }
 }
+
+inline void Finish6VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                   __m512i& input5_val, __m512i& input6_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input5_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input2 = tmp_input2;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+}
+
 
 inline void Finish7VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7){
@@ -5360,6 +8773,363 @@ inline void Finish7VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, 
         input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xAAAA, permNeighMax7);
     }
 }
+
+inline void Finish7VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input5_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input2 = tmp_input2;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input3 = tmp_input3;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xFF00, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xF0F0, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xCCCC, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xAAAA, permNeighMax7);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+    }
+}
+
 
 inline void Finish8VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8 ){
@@ -5574,6 +9344,428 @@ inline void Finish8VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, 
     }
 }
 
+inline void Finish8VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val){
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input5_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input = tmp_input;
+        input5 = tmp_input5;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input2 = tmp_input2;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input3 = tmp_input3;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input4;
+        __m512i tmp_input4 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
+        __m512i input4_val_copy = input4_val;
+        input4_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input4, inputCopy, _MM_CMPINT_EQ ),
+                                       input4_val_copy);
+        input8_val = _mm512_mask_mov_epi32(input4_val_copy, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input4 = tmp_input4;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input3_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input = tmp_input;
+        input3 = tmp_input3;
+    }
+    {
+        __m512i inputCopy = input2;
+        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input2_val_copy = input2_val;
+        input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
+                                       input2_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input2_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input2 = tmp_input2;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input;
+        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
+        __m512i input_val_copy = input_val;
+        input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
+                                       input_val_copy);
+        input2_val = _mm512_mask_mov_epi32(input_val_copy, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+    }
+    {
+        __m512i inputCopy = input3;
+        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
+        __m512i input3_val_copy = input3_val;
+        input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
+                                       input3_val_copy);
+        input4_val = _mm512_mask_mov_epi32(input3_val_copy, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input7_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        input5 = tmp_input5;
+        input7 = tmp_input7;
+    }
+    {
+        __m512i inputCopy = input6;
+        __m512i tmp_input6 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
+        __m512i input6_val_copy = input6_val;
+        input6_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input6, inputCopy, _MM_CMPINT_EQ ),
+                                       input6_val_copy);
+        input8_val = _mm512_mask_mov_epi32(input6_val_copy, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input6 = tmp_input6;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i inputCopy = input5;
+        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
+        __m512i input5_val_copy = input5_val;
+        input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
+                                       input5_val_copy);
+        input6_val = _mm512_mask_mov_epi32(input5_val_copy, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+    }
+    {
+        __m512i inputCopy = input7;
+        __m512i tmp_input7 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
+        __m512i input7_val_copy = input7_val;
+        input7_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input7, inputCopy, _MM_CMPINT_EQ ),
+                                       input7_val_copy);
+        input8_val = _mm512_mask_mov_epi32(input7_val_copy, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
+                                              15, 14, 13, 12, 11, 10, 9, 8);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);__m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xFF00, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xFF00, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xFF00, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xFF00, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xFF00, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xFF00, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xFF00, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
+                                              3, 2, 1, 0, 7, 6, 5, 4);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xF0F0, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xF0F0, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xF0F0, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xF0F0, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xF0F0, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xF0F0, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xF0F0, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
+                                              5, 4, 7, 6, 1, 0, 3, 2);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xCCCC, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xCCCC, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xCCCC, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xCCCC, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xCCCC, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xCCCC, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xCCCC, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
+                                              6, 7, 4, 5, 2, 3, 0, 1);
+        __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
+        __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
+        __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
+        __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
+        __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
+        __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
+        __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
+        __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
+        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
+        __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
+        __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
+        __m512i permNeighMax4 = _mm512_max_epi32(permNeigh4, input4);
+        __m512i permNeighMax5 = _mm512_max_epi32(permNeigh5, input5);
+        __m512i permNeighMax6 = _mm512_max_epi32(permNeigh6, input6);
+        __m512i permNeighMax7 = _mm512_max_epi32(permNeigh7, input7);
+        __m512i permNeighMax8 = _mm512_max_epi32(permNeigh8, input8);
+        __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
+        __m512i tmp_input2 = _mm512_mask_mov_epi32(permNeighMin2, 0xAAAA, permNeighMax2);
+        __m512i tmp_input3 = _mm512_mask_mov_epi32(permNeighMin3, 0xAAAA, permNeighMax3);
+        __m512i tmp_input4 = _mm512_mask_mov_epi32(permNeighMin4, 0xAAAA, permNeighMax4);
+        __m512i tmp_input5 = _mm512_mask_mov_epi32(permNeighMin5, 0xAAAA, permNeighMax5);
+        __m512i tmp_input6 = _mm512_mask_mov_epi32(permNeighMin6, 0xAAAA, permNeighMax6);
+        __m512i tmp_input7 = _mm512_mask_mov_epi32(permNeighMin7, 0xAAAA, permNeighMax7);
+        __m512i tmp_input8 = _mm512_mask_mov_epi32(permNeighMin8, 0xAAAA, permNeighMax8);
+
+        input_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input_val), _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+        input_val);
+        input2_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input2_val), _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+        input2_val);
+        input3_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input3_val), _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+        input3_val);
+        input4_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input4_val), _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+        input4_val);
+        input5_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input5_val), _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+        input5_val);
+        input6_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input6_val), _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+        input6_val);
+        input7_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input7_val), _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+        input7_val);
+        input8_val = _mm512_mask_mov_epi32(_mm512_permutexvar_epi32(idxNoNeigh, input8_val), _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+        input8_val);
+
+        input = tmp_input;
+        input2 = tmp_input2;
+        input3 = tmp_input3;
+        input4 = tmp_input4;
+        input5 = tmp_input5;
+        input6 = tmp_input6;
+        input7 = tmp_input7;
+        input8 = tmp_input8;
+    }
+}
+
 inline void Sort9VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                             __m512i& input9){
@@ -5590,6 +9782,38 @@ inline void Sort9VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish1VecBitFull(input9);
+}
+
+inline void Sort9VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9,
+                                 __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                 __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                 __m512i& input9_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                         input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    SortVecBitFull_pair(input9, input9_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish1VecBitFull_pair(input9, input9_val);
 }
 
 inline void Sort9VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5617,6 +9841,48 @@ inline void Sort9VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int*
     _mm512_storeu_si512(ptr9, input9);
 }
 
+inline void Sort9VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    Sort9VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+}
+
+
 inline void Sort10VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                             __m512i& input9, __m512i& input10){
@@ -5636,6 +9902,52 @@ inline void Sort10VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish2VecBitFull(input9, input10);
+}
+
+inline void Sort10VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10,
+                             __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                             __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                             __m512i& input9_val, __m512i& input10_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                         input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort2VecBitFull_pair(input9, input10, input9_val, input10_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                           input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish2VecBitFull_pair(input9, input10, input9_val, input10_val);
 }
 
 inline void Sort10VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5665,6 +9977,52 @@ inline void Sort10VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr10, input10);
 }
 
+inline void Sort10VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    Sort10VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+}
+
+
 inline void Sort11VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                             __m512i& input9, __m512i& input10, __m512i& input11){
@@ -5687,6 +10045,67 @@ inline void Sort11VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish3VecBitFull(input9, input10, input11);
+}
+
+inline void Sort11VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort3VecBitFull_pair(input9, input10, input11,
+                    input9_val, input10_val, input11_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish3VecBitFull_pair(input9, input10, input11,
+                      input9_val, input10_val, input11_val);
 }
 
 inline void Sort11VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5718,6 +10137,56 @@ inline void Sort11VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr11, input11);
 }
 
+inline void Sort11VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    Sort11VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+}
+
+
 inline void Sort12VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                             __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12 ){
@@ -5743,6 +10212,80 @@ inline void Sort12VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish4VecBitFull(input9, input10, input11, input12);
+}
+
+
+inline void Sort12VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
+                                  __m512i& input12_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort4VecBitFull_pair(input9, input10, input11, input12,
+                    input9_val, input10_val, input11_val, input12_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+        __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+        __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        __m512i input12_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input12_val);
+        input12_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input12, permNeigh12, _MM_CMPINT_EQ ),
+                                       input12_val_perm);
+        input5_val = _mm512_mask_mov_epi32(input12_val_perm, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+
+        input12 = tmp_input12;
+        input5 = tmp_input5;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish4VecBitFull_pair(input9, input10, input11, input12,
+                      input9_val, input10_val, input11_val, input12_val);
 }
 
 inline void Sort12VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5776,6 +10319,60 @@ inline void Sort12VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr12, input12);
 }
 
+inline void Sort12VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input11 = _mm512_loadu_si512(ptr1+11*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    __m512i input11_val = _mm512_loadu_si512(values+11*16);
+    Sort12VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,input11,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val,input11_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(ptr1+11*16, input11);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+    _mm512_storeu_si512(values+11*16, input11_val);
+}
+
+
 inline void Sort13VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                             __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
@@ -5805,6 +10402,93 @@ inline void Sort13VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish5VecBitFull(input9, input10, input11, input12, input13);
+}
+
+inline void Sort13VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
+                            __m512i& input13,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
+                                  __m512i& input12_val, __m512i& input13_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort5VecBitFull_pair(input9, input10, input11, input12, input13,
+                    input9_val, input10_val, input11_val, input12_val, input13_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+        __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
+        __m512i permNeigh13 = _mm512_permutexvar_epi32(idxNoNeigh, input13);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+        __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+
+        __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        __m512i input12_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input12_val);
+        input12_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input12, permNeigh12, _MM_CMPINT_EQ ),
+                                       input12_val_perm);
+        input5_val = _mm512_mask_mov_epi32(input12_val_perm, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        __m512i input13_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input13_val);
+        input13_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input13, permNeigh13, _MM_CMPINT_EQ ),
+                                       input13_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input13_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+
+        input12 = tmp_input12;
+        input5 = tmp_input5;
+
+        input13 = tmp_input13;
+        input4 = tmp_input4;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish5VecBitFull_pair(input9, input10, input11, input12, input13,
+                      input9_val, input10_val, input11_val, input12_val, input13_val);
 }
 
 inline void Sort13VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5841,6 +10525,64 @@ inline void Sort13VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr13, input13);
 }
 
+inline void Sort13VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input11 = _mm512_loadu_si512(ptr1+11*16);
+    __m512i input12 = _mm512_loadu_si512(ptr1+12*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    __m512i input11_val = _mm512_loadu_si512(values+11*16);
+    __m512i input12_val = _mm512_loadu_si512(values+12*16);
+    Sort13VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,input11,input12,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val,input11_val,input12_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(ptr1+11*16, input11);
+    _mm512_storeu_si512(ptr1+12*16, input12);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+    _mm512_storeu_si512(values+11*16, input11_val);
+    _mm512_storeu_si512(values+12*16, input12_val);
+}
+
+
 
 inline void Sort14VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
@@ -5874,6 +10616,106 @@ inline void Sort14VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     }
     Finish8VecBitFull(input, input2, input3, input4, input5, input6, input7, input8);
     Finish6VecBitFull(input9, input10, input11, input12, input13, input14);
+}
+
+inline void Sort14VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
+                            __m512i& input13, __m512i& input14,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
+                                  __m512i& input12_val, __m512i& input13_val, __m512i& input14_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort6VecBitFull_pair(input9, input10, input11, input12, input13, input14,
+                    input9_val, input10_val, input11_val, input12_val, input13_val, input14_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+        __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
+        __m512i permNeigh13 = _mm512_permutexvar_epi32(idxNoNeigh, input13);
+        __m512i permNeigh14 = _mm512_permutexvar_epi32(idxNoNeigh, input14);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+        __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+
+        __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+
+        __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        __m512i input12_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input12_val);
+        input12_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input12, permNeigh12, _MM_CMPINT_EQ ),
+                                       input12_val_perm);
+        input5_val = _mm512_mask_mov_epi32(input12_val_perm, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        __m512i input13_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input13_val);
+        input13_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input13, permNeigh13, _MM_CMPINT_EQ ),
+                                       input13_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input13_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input14_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input14_val);
+        input14_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input14, permNeigh14, _MM_CMPINT_EQ ),
+                                       input14_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input14_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+
+        input12 = tmp_input12;
+        input5 = tmp_input5;
+
+        input13 = tmp_input13;
+        input4 = tmp_input4;
+
+        input14 = tmp_input14;
+        input3 = tmp_input3;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish6VecBitFull_pair(input9, input10, input11, input12, input13, input14,
+                      input9_val, input10_val, input11_val, input12_val, input13_val, input14_val);
 }
 
 inline void Sort14VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
@@ -5910,6 +10752,67 @@ inline void Sort14VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr12, input12);
     _mm512_storeu_si512(ptr13, input13);
     _mm512_storeu_si512(ptr14, input14);
+}
+
+inline void Sort14VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input11 = _mm512_loadu_si512(ptr1+11*16);
+    __m512i input12 = _mm512_loadu_si512(ptr1+12*16);
+    __m512i input13 = _mm512_loadu_si512(ptr1+13*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    __m512i input11_val = _mm512_loadu_si512(values+11*16);
+    __m512i input12_val = _mm512_loadu_si512(values+12*16);
+    __m512i input13_val = _mm512_loadu_si512(values+13*16);
+    Sort14VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,input11,input12,input13,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val,input11_val,input12_val,input13_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(ptr1+11*16, input11);
+    _mm512_storeu_si512(ptr1+12*16, input12);
+    _mm512_storeu_si512(ptr1+13*16, input13);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+    _mm512_storeu_si512(values+11*16, input11_val);
+    _mm512_storeu_si512(values+12*16, input12_val);
+    _mm512_storeu_si512(values+13*16, input13_val);
 }
 
 
@@ -5950,6 +10853,120 @@ inline void Sort15VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     Finish7VecBitFull(input9, input10, input11, input12, input13, input14, input15);
 }
 
+inline void Sort15VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
+                            __m512i& input13, __m512i& input14, __m512i& input15,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
+                                  __m512i& input12_val, __m512i& input13_val, __m512i& input14_val,
+                                  __m512i& input15_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort7VecBitFull_pair(input9, input10, input11, input12, input13, input14, input15,
+                    input9_val, input10_val, input11_val, input12_val, input13_val, input14_val, input15_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+        __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
+        __m512i permNeigh13 = _mm512_permutexvar_epi32(idxNoNeigh, input13);
+        __m512i permNeigh14 = _mm512_permutexvar_epi32(idxNoNeigh, input14);
+        __m512i permNeigh15 = _mm512_permutexvar_epi32(idxNoNeigh, input15);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+        __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+
+        __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+
+        __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+
+        __m512i tmp_input15 = _mm512_max_epi32(input2, permNeigh15);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh15);
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        __m512i input12_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input12_val);
+        input12_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input12, permNeigh12, _MM_CMPINT_EQ ),
+                                       input12_val_perm);
+        input5_val = _mm512_mask_mov_epi32(input12_val_perm, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        __m512i input13_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input13_val);
+        input13_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input13, permNeigh13, _MM_CMPINT_EQ ),
+                                       input13_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input13_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input14_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input14_val);
+        input14_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input14, permNeigh14, _MM_CMPINT_EQ ),
+                                       input14_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input14_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        __m512i input15_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input15_val);
+        input15_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input15, permNeigh15, _MM_CMPINT_EQ ),
+                                       input15_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input15_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+
+        input12 = tmp_input12;
+        input5 = tmp_input5;
+
+        input13 = tmp_input13;
+        input4 = tmp_input4;
+
+        input14 = tmp_input14;
+        input3 = tmp_input3;
+
+        input15 = tmp_input15;
+        input2 = tmp_input2;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish7VecBitFull_pair(input9, input10, input11, input12, input13, input14, input15,
+                      input9_val, input10_val, input11_val, input12_val, input13_val, input14_val, input15_val);
+}
+
 inline void Sort15VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
             int* __restrict__ ptr5, int* __restrict__ ptr6, int* __restrict__ ptr7, int* __restrict__ ptr8,
                              int* __restrict__ ptr9, int* __restrict__ ptr10, int* __restrict__ ptr11, int* __restrict__ ptr12,
@@ -5987,6 +11004,72 @@ inline void Sort15VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr14, input14);
     _mm512_storeu_si512(ptr15, input15);
 }
+
+inline void Sort15VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input11 = _mm512_loadu_si512(ptr1+11*16);
+    __m512i input12 = _mm512_loadu_si512(ptr1+12*16);
+    __m512i input13 = _mm512_loadu_si512(ptr1+13*16);
+    __m512i input14 = _mm512_loadu_si512(ptr1+14*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    __m512i input11_val = _mm512_loadu_si512(values+11*16);
+    __m512i input12_val = _mm512_loadu_si512(values+12*16);
+    __m512i input13_val = _mm512_loadu_si512(values+13*16);
+    __m512i input14_val = _mm512_loadu_si512(values+14*16);
+    Sort15VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,input11,input12,input13,input14,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val,input11_val,input12_val,input13_val,input14_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(ptr1+11*16, input11);
+    _mm512_storeu_si512(ptr1+12*16, input12);
+    _mm512_storeu_si512(ptr1+13*16, input13);
+    _mm512_storeu_si512(ptr1+14*16, input14);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+    _mm512_storeu_si512(values+11*16, input11_val);
+    _mm512_storeu_si512(values+12*16, input12_val);
+    _mm512_storeu_si512(values+13*16, input13_val);
+    _mm512_storeu_si512(values+14*16, input14_val);
+}
+
 
 
 inline void Sort16VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
@@ -6029,6 +11112,134 @@ inline void Sort16VecBitFull(__m512i& input, __m512i& input2, __m512i& input3, _
     Finish8VecBitFull(input9, input10, input11, input12, input13, input14, input15, input16);
 }
 
+inline void Sort16VecBitFull_pair(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
+                            __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
+                            __m512i& input9, __m512i& input10, __m512i& input11, __m512i& input12,
+                            __m512i& input13, __m512i& input14, __m512i& input15, __m512i& input16,
+                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
+                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
+                                  __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
+                                  __m512i& input12_val, __m512i& input13_val, __m512i& input14_val,
+                                  __m512i& input15_val,__m512i& input16_val){
+    Sort8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                    input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Sort8VecBitFull_pair(input9, input10, input11, input12, input13, input14, input15, input16,
+                    input9_val, input10_val, input11_val, input12_val, input13_val, input14_val, input15_val, input16_val);
+    {
+        __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
+                                              8, 9, 10, 11, 12, 13, 14, 15);
+        __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
+        __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
+        __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
+        __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
+        __m512i permNeigh13 = _mm512_permutexvar_epi32(idxNoNeigh, input13);
+        __m512i permNeigh14 = _mm512_permutexvar_epi32(idxNoNeigh, input14);
+        __m512i permNeigh15 = _mm512_permutexvar_epi32(idxNoNeigh, input15);
+        __m512i permNeigh16 = _mm512_permutexvar_epi32(idxNoNeigh, input16);
+
+        __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+
+        __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+
+        __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+
+        __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+
+        __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+
+        __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+
+        __m512i tmp_input15 = _mm512_max_epi32(input2, permNeigh15);
+        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh15);
+
+        __m512i tmp_input16 = _mm512_max_epi32(input, permNeigh16);
+        __m512i tmp_input = _mm512_min_epi32(input, permNeigh16);
+
+
+        __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
+        input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
+                                       input9_val_perm);
+        input8_val = _mm512_mask_mov_epi32(input9_val_perm, _mm512_cmp_epi32_mask(tmp_input8, input8, _MM_CMPINT_EQ ),
+                                       input8_val);
+
+        __m512i input10_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input10_val);
+        input10_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input10, permNeigh10, _MM_CMPINT_EQ ),
+                                       input10_val_perm);
+        input7_val = _mm512_mask_mov_epi32(input10_val_perm, _mm512_cmp_epi32_mask(tmp_input7, input7, _MM_CMPINT_EQ ),
+                                       input7_val);
+
+        __m512i input11_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input11_val);
+        input11_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input11, permNeigh11, _MM_CMPINT_EQ ),
+                                       input11_val_perm);
+        input6_val = _mm512_mask_mov_epi32(input11_val_perm, _mm512_cmp_epi32_mask(tmp_input6, input6, _MM_CMPINT_EQ ),
+                                       input6_val);
+
+        __m512i input12_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input12_val);
+        input12_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input12, permNeigh12, _MM_CMPINT_EQ ),
+                                       input12_val_perm);
+        input5_val = _mm512_mask_mov_epi32(input12_val_perm, _mm512_cmp_epi32_mask(tmp_input5, input5, _MM_CMPINT_EQ ),
+                                       input5_val);
+
+        __m512i input13_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input13_val);
+        input13_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input13, permNeigh13, _MM_CMPINT_EQ ),
+                                       input13_val_perm);
+        input4_val = _mm512_mask_mov_epi32(input13_val_perm, _mm512_cmp_epi32_mask(tmp_input4, input4, _MM_CMPINT_EQ ),
+                                       input4_val);
+
+        __m512i input14_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input14_val);
+        input14_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input14, permNeigh14, _MM_CMPINT_EQ ),
+                                       input14_val_perm);
+        input3_val = _mm512_mask_mov_epi32(input14_val_perm, _mm512_cmp_epi32_mask(tmp_input3, input3, _MM_CMPINT_EQ ),
+                                       input3_val);
+
+        __m512i input15_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input15_val);
+        input15_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input15, permNeigh15, _MM_CMPINT_EQ ),
+                                       input15_val_perm);
+        input2_val = _mm512_mask_mov_epi32(input15_val_perm, _mm512_cmp_epi32_mask(tmp_input2, input2, _MM_CMPINT_EQ ),
+                                       input2_val);
+
+        __m512i input16_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input16_val);
+        input16_val = _mm512_mask_mov_epi32(input_val, _mm512_cmp_epi32_mask(tmp_input16, permNeigh16, _MM_CMPINT_EQ ),
+                                       input16_val_perm);
+        input_val = _mm512_mask_mov_epi32(input16_val_perm, _mm512_cmp_epi32_mask(tmp_input, input, _MM_CMPINT_EQ ),
+                                       input_val);
+
+        input9 = tmp_input9;
+        input8 = tmp_input8;
+
+        input10 = tmp_input10;
+        input7 = tmp_input7;
+
+        input11 = tmp_input11;
+        input6 = tmp_input6;
+
+        input12 = tmp_input12;
+        input5 = tmp_input5;
+
+        input13 = tmp_input13;
+        input4 = tmp_input4;
+
+        input14 = tmp_input14;
+        input3 = tmp_input3;
+
+        input15 = tmp_input15;
+        input2 = tmp_input2;
+
+        input16 = tmp_input16;
+        input = tmp_input;
+    }
+    Finish8VecBitFull_pair(input, input2, input3, input4, input5, input6, input7, input8,
+                      input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
+    Finish8VecBitFull_pair(input9, input10, input11, input12, input13, input14, input15, input16,
+                      input9_val, input10_val, input11_val, input12_val, input13_val, input14_val, input15_val, input16_val);
+}
+
 inline void Sort16VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int* __restrict__ ptr3, int* __restrict__ ptr4,
             int* __restrict__ ptr5, int* __restrict__ ptr6, int* __restrict__ ptr7, int* __restrict__ ptr8,
                              int* __restrict__ ptr9, int* __restrict__ ptr10, int* __restrict__ ptr11, int* __restrict__ ptr12,
@@ -6068,6 +11279,76 @@ inline void Sort16VecBitFull(int* __restrict__ ptr1, int* __restrict__ ptr2, int
     _mm512_storeu_si512(ptr15, input15);
     _mm512_storeu_si512(ptr16, input16);
 }
+
+inline void Sort16VecBitFull_pair(int* __restrict__ ptr1, int* __restrict__ values ){
+    __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
+    __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
+    __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
+    __m512i input3 = _mm512_loadu_si512(ptr1+3*16);
+    __m512i input4 = _mm512_loadu_si512(ptr1+4*16);
+    __m512i input5 = _mm512_loadu_si512(ptr1+5*16);
+    __m512i input6 = _mm512_loadu_si512(ptr1+6*16);
+    __m512i input7 = _mm512_loadu_si512(ptr1+7*16);
+    __m512i input8 = _mm512_loadu_si512(ptr1+8*16);
+    __m512i input9 = _mm512_loadu_si512(ptr1+9*16);
+    __m512i input10 = _mm512_loadu_si512(ptr1+10*16);
+    __m512i input11 = _mm512_loadu_si512(ptr1+11*16);
+    __m512i input12 = _mm512_loadu_si512(ptr1+12*16);
+    __m512i input13 = _mm512_loadu_si512(ptr1+13*16);
+    __m512i input14 = _mm512_loadu_si512(ptr1+14*16);
+    __m512i input15 = _mm512_loadu_si512(ptr1+15*16);
+    __m512i input0_val = _mm512_loadu_si512(values+0*16);
+    __m512i input1_val = _mm512_loadu_si512(values+1*16);
+    __m512i input2_val = _mm512_loadu_si512(values+2*16);
+    __m512i input3_val = _mm512_loadu_si512(values+3*16);
+    __m512i input4_val = _mm512_loadu_si512(values+4*16);
+    __m512i input5_val = _mm512_loadu_si512(values+5*16);
+    __m512i input6_val = _mm512_loadu_si512(values+6*16);
+    __m512i input7_val = _mm512_loadu_si512(values+7*16);
+    __m512i input8_val = _mm512_loadu_si512(values+8*16);
+    __m512i input9_val = _mm512_loadu_si512(values+9*16);
+    __m512i input10_val = _mm512_loadu_si512(values+10*16);
+    __m512i input11_val = _mm512_loadu_si512(values+11*16);
+    __m512i input12_val = _mm512_loadu_si512(values+12*16);
+    __m512i input13_val = _mm512_loadu_si512(values+13*16);
+    __m512i input14_val = _mm512_loadu_si512(values+14*16);
+    __m512i input15_val = _mm512_loadu_si512(values+15*16);
+    Sort16VecBitFull_pair(input0,input1,input2,input3,input4,input5,input6,input7,input8,input9,input10,input11,input12,input13,input14,input15,
+        input0_val,input1_val,input2_val,input3_val,input4_val,input5_val,input6_val,input7_val,input8_val,input9_val,input10_val,input11_val,input12_val,input13_val,input14_val,input15_val);
+    _mm512_storeu_si512(ptr1+0*16, input0);
+    _mm512_storeu_si512(ptr1+1*16, input1);
+    _mm512_storeu_si512(ptr1+2*16, input2);
+    _mm512_storeu_si512(ptr1+3*16, input3);
+    _mm512_storeu_si512(ptr1+4*16, input4);
+    _mm512_storeu_si512(ptr1+5*16, input5);
+    _mm512_storeu_si512(ptr1+6*16, input6);
+    _mm512_storeu_si512(ptr1+7*16, input7);
+    _mm512_storeu_si512(ptr1+8*16, input8);
+    _mm512_storeu_si512(ptr1+9*16, input9);
+    _mm512_storeu_si512(ptr1+10*16, input10);
+    _mm512_storeu_si512(ptr1+11*16, input11);
+    _mm512_storeu_si512(ptr1+12*16, input12);
+    _mm512_storeu_si512(ptr1+13*16, input13);
+    _mm512_storeu_si512(ptr1+14*16, input14);
+    _mm512_storeu_si512(ptr1+15*16, input15);
+    _mm512_storeu_si512(values+0*16, input0_val);
+    _mm512_storeu_si512(values+1*16, input1_val);
+    _mm512_storeu_si512(values+2*16, input2_val);
+    _mm512_storeu_si512(values+3*16, input3_val);
+    _mm512_storeu_si512(values+4*16, input4_val);
+    _mm512_storeu_si512(values+5*16, input5_val);
+    _mm512_storeu_si512(values+6*16, input6_val);
+    _mm512_storeu_si512(values+7*16, input7_val);
+    _mm512_storeu_si512(values+8*16, input8_val);
+    _mm512_storeu_si512(values+9*16, input9_val);
+    _mm512_storeu_si512(values+10*16, input10_val);
+    _mm512_storeu_si512(values+11*16, input11_val);
+    _mm512_storeu_si512(values+12*16, input12_val);
+    _mm512_storeu_si512(values+13*16, input13_val);
+    _mm512_storeu_si512(values+14*16, input14_val);
+    _mm512_storeu_si512(values+15*16, input15_val);
+}
+
 
 
 
@@ -6502,6 +11783,690 @@ inline void SortByVecBitFull(int* __restrict__ ptr, const size_t length){
     }
     }
 }
+
+
+inline void SortByVecBitFull_pair(int* __restrict__ ptr, int* __restrict__ values, const size_t length){
+    // length is limited to 4 times size of a vec
+    const int nbValuesInVec = 16;
+    const int nbVecs = (length+nbValuesInVec-1)/nbValuesInVec;
+    const int rest = nbVecs*nbValuesInVec-length;
+    const int lastVecSize = nbValuesInVec-rest;
+    switch(nbVecs){
+    case 1:
+    {
+        __m512i v1 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr),
+                        _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v1_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values),
+                        _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        SortVecBitFull_pair(v1, v1_val);
+        _mm512_mask_compressstoreu_epi32(ptr, 0xFFFF>>rest, v1);
+        _mm512_mask_compressstoreu_epi32(values, 0xFFFF>>rest, v1_val);
+    }
+        break;
+    case 2:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+16),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v2_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+16),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort2VecBitFull_pair(v1,v2,
+                             v1_val,v2_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_mask_compressstoreu_epi32(ptr+16, 0xFFFF>>rest, v2);
+        _mm512_mask_compressstoreu_epi32(values+16, 0xFFFF>>rest, v2_val);
+    }
+        break;
+    case 3:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+32),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v3_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+32),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort3VecBitFull_pair(v1,v2,v3,
+                             v1_val,v2_val,v3_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_mask_compressstoreu_epi32(ptr+32, 0xFFFF>>rest, v3);
+        _mm512_mask_compressstoreu_epi32(values+32, 0xFFFF>>rest, v3_val);
+    }
+        break;
+    case 4:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+48),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v4_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+48),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort4VecBitFull_pair(v1,v2,v3,v4,
+                             v1_val,v2_val,v3_val,v4_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_mask_compressstoreu_epi32(ptr+48, 0xFFFF>>rest, v4);
+        _mm512_mask_compressstoreu_epi32(values+48, 0xFFFF>>rest, v4_val);
+    }
+        break;
+    case 5:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+64),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v5_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+64),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort5VecBitFull_pair(v1,v2,v3,v4,v5,
+                             v1_val,v2_val,v3_val,v4_val,v5_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_mask_compressstoreu_epi32(ptr+64, 0xFFFF>>rest, v5);
+        _mm512_mask_compressstoreu_epi32(values+64, 0xFFFF>>rest, v5_val);
+    }
+        break;
+    case 6:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+80),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v6_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+80),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort6VecBitFull_pair(v1,v2,v3,v4,v5,v6,
+                             v1_val,v2_val,v3_val,v4_val,v5_val,v6_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_mask_compressstoreu_epi32(ptr+80, 0xFFFF>>rest, v6);
+        _mm512_mask_compressstoreu_epi32(values+80, 0xFFFF>>rest, v6_val);
+    }
+        break;
+    case 7:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+96),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v7_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+96),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort7VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,
+                             v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_mask_compressstoreu_epi32(ptr+96, 0xFFFF>>rest, v7);
+        _mm512_mask_compressstoreu_epi32(values+96, 0xFFFF>>rest, v7_val);
+    }
+        break;
+    case 8:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+112),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v8_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+112),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort8VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,
+                             v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_mask_compressstoreu_epi32(ptr+112, 0xFFFF>>rest, v8);
+        _mm512_mask_compressstoreu_epi32(values+112, 0xFFFF>>rest, v8_val);
+    }
+        break;
+    case 9:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+128),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v9_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+128),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort9VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,
+                             v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_mask_compressstoreu_epi32(ptr+128, 0xFFFF>>rest, v9);
+        _mm512_mask_compressstoreu_epi32(values+128, 0xFFFF>>rest, v9_val);
+    }
+        break;
+    case 10:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+144),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v10_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+144),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort10VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_mask_compressstoreu_epi32(ptr+144, 0xFFFF>>rest, v10);
+        _mm512_mask_compressstoreu_epi32(values+144, 0xFFFF>>rest, v10_val);
+    }
+        break;
+    case 11:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+160),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v11_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+160),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort11VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_mask_compressstoreu_epi32(ptr+160, 0xFFFF>>rest, v11);
+        _mm512_mask_compressstoreu_epi32(values+160, 0xFFFF>>rest, v11_val);
+    }
+        break;
+    case 12:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_loadu_si512(ptr+160);
+        __m512i v11_val = _mm512_loadu_si512(values+160);
+        __m512i v12 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+176),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v12_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+176),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort12VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val,v12_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_storeu_si512(ptr+160, v11);
+        _mm512_storeu_si512(values+160, v11_val);
+        _mm512_mask_compressstoreu_epi32(ptr+176, 0xFFFF>>rest, v12);
+        _mm512_mask_compressstoreu_epi32(values+176, 0xFFFF>>rest, v12_val);
+    }
+        break;
+    case 13:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_loadu_si512(ptr+160);
+        __m512i v11_val = _mm512_loadu_si512(values+160);
+        __m512i v12 = _mm512_loadu_si512(ptr+176);
+        __m512i v12_val = _mm512_loadu_si512(values+176);
+        __m512i v13 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+192),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v13_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+192),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort13VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val,v12_val,v13_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_storeu_si512(ptr+160, v11);
+        _mm512_storeu_si512(values+160, v11_val);
+        _mm512_storeu_si512(ptr+176, v12);
+        _mm512_storeu_si512(values+176, v12_val);
+        _mm512_mask_compressstoreu_epi32(ptr+192, 0xFFFF>>rest, v13);
+        _mm512_mask_compressstoreu_epi32(values+192, 0xFFFF>>rest, v13_val);
+    }
+        break;
+    case 14:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_loadu_si512(ptr+160);
+        __m512i v11_val = _mm512_loadu_si512(values+160);
+        __m512i v12 = _mm512_loadu_si512(ptr+176);
+        __m512i v12_val = _mm512_loadu_si512(values+176);
+        __m512i v13 = _mm512_loadu_si512(ptr+192);
+        __m512i v13_val = _mm512_loadu_si512(values+192);
+        __m512i v14 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+208),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v14_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+208),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort14VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val,v12_val,v13_val,v14_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_storeu_si512(ptr+160, v11);
+        _mm512_storeu_si512(values+160, v11_val);
+        _mm512_storeu_si512(ptr+176, v12);
+        _mm512_storeu_si512(values+176, v12_val);
+        _mm512_storeu_si512(ptr+192, v13);
+        _mm512_storeu_si512(values+192, v13_val);
+        _mm512_mask_compressstoreu_epi32(ptr+208, 0xFFFF>>rest, v14);
+        _mm512_mask_compressstoreu_epi32(values+208, 0xFFFF>>rest, v14_val);
+    }
+        break;
+    case 15:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_loadu_si512(ptr+160);
+        __m512i v11_val = _mm512_loadu_si512(values+160);
+        __m512i v12 = _mm512_loadu_si512(ptr+176);
+        __m512i v12_val = _mm512_loadu_si512(values+176);
+        __m512i v13 = _mm512_loadu_si512(ptr+192);
+        __m512i v13_val = _mm512_loadu_si512(values+192);
+        __m512i v14 = _mm512_loadu_si512(ptr+208);
+        __m512i v14_val = _mm512_loadu_si512(values+208);
+        __m512i v15 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+224),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v15_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+224),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort15VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val,v12_val,v13_val,v14_val,v15_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_storeu_si512(ptr+160, v11);
+        _mm512_storeu_si512(values+160, v11_val);
+        _mm512_storeu_si512(ptr+176, v12);
+        _mm512_storeu_si512(values+176, v12_val);
+        _mm512_storeu_si512(ptr+192, v13);
+        _mm512_storeu_si512(values+192, v13_val);
+        _mm512_storeu_si512(ptr+208, v14);
+        _mm512_storeu_si512(values+208, v14_val);
+        _mm512_mask_compressstoreu_epi32(ptr+224, 0xFFFF>>rest, v15);
+        _mm512_mask_compressstoreu_epi32(values+224, 0xFFFF>>rest, v15_val);
+    }
+        break;
+    //case 16:
+    default:
+    {
+        __m512i v1 = _mm512_loadu_si512(ptr);
+        __m512i v1_val = _mm512_loadu_si512(values);
+        __m512i v2 = _mm512_loadu_si512(ptr+16);
+        __m512i v2_val = _mm512_loadu_si512(values+16);
+        __m512i v3 = _mm512_loadu_si512(ptr+32);
+        __m512i v3_val = _mm512_loadu_si512(values+32);
+        __m512i v4 = _mm512_loadu_si512(ptr+48);
+        __m512i v4_val = _mm512_loadu_si512(values+48);
+        __m512i v5 = _mm512_loadu_si512(ptr+64);
+        __m512i v5_val = _mm512_loadu_si512(values+64);
+        __m512i v6 = _mm512_loadu_si512(ptr+80);
+        __m512i v6_val = _mm512_loadu_si512(values+80);
+        __m512i v7 = _mm512_loadu_si512(ptr+96);
+        __m512i v7_val = _mm512_loadu_si512(values+96);
+        __m512i v8 = _mm512_loadu_si512(ptr+112);
+        __m512i v8_val = _mm512_loadu_si512(values+112);
+        __m512i v9 = _mm512_loadu_si512(ptr+128);
+        __m512i v9_val = _mm512_loadu_si512(values+128);
+        __m512i v10 = _mm512_loadu_si512(ptr+144);
+        __m512i v10_val = _mm512_loadu_si512(values+144);
+        __m512i v11 = _mm512_loadu_si512(ptr+160);
+        __m512i v11_val = _mm512_loadu_si512(values+160);
+        __m512i v12 = _mm512_loadu_si512(ptr+176);
+        __m512i v12_val = _mm512_loadu_si512(values+176);
+        __m512i v13 = _mm512_loadu_si512(ptr+192);
+        __m512i v13_val = _mm512_loadu_si512(values+192);
+        __m512i v14 = _mm512_loadu_si512(ptr+208);
+        __m512i v14_val = _mm512_loadu_si512(values+208);
+        __m512i v15 = _mm512_loadu_si512(ptr+224);
+        __m512i v15_val = _mm512_loadu_si512(values+224);
+        __m512i v16 = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, ptr+240),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        __m512i v16_val = _mm512_or_si512(_mm512_maskz_loadu_epi32(0xFFFF>>rest, values+240),
+                                     _mm512_maskz_set1_epi32(0xFFFF<<lastVecSize, INT_MAX));
+        Sort16VecBitFull_pair(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,
+                              v1_val,v2_val,v3_val,v4_val,v5_val,v6_val,v7_val,v8_val,v9_val,v10_val,v11_val,v12_val,v13_val,v14_val,v15_val,v16_val);
+        _mm512_storeu_si512(ptr, v1);
+        _mm512_storeu_si512(values, v1_val);
+        _mm512_storeu_si512(ptr+16, v2);
+        _mm512_storeu_si512(values+16, v2_val);
+        _mm512_storeu_si512(ptr+32, v3);
+        _mm512_storeu_si512(values+32, v3_val);
+        _mm512_storeu_si512(ptr+48, v4);
+        _mm512_storeu_si512(values+48, v4_val);
+        _mm512_storeu_si512(ptr+64, v5);
+        _mm512_storeu_si512(values+64, v5_val);
+        _mm512_storeu_si512(ptr+80, v6);
+        _mm512_storeu_si512(values+80, v6_val);
+        _mm512_storeu_si512(ptr+96, v7);
+        _mm512_storeu_si512(values+96, v7_val);
+        _mm512_storeu_si512(ptr+112, v8);
+        _mm512_storeu_si512(values+112, v8_val);
+        _mm512_storeu_si512(ptr+128, v9);
+        _mm512_storeu_si512(values+128, v9_val);
+        _mm512_storeu_si512(ptr+144, v10);
+        _mm512_storeu_si512(values+144, v10_val);
+        _mm512_storeu_si512(ptr+160, v11);
+        _mm512_storeu_si512(values+160, v11_val);
+        _mm512_storeu_si512(ptr+176, v12);
+        _mm512_storeu_si512(values+176, v12_val);
+        _mm512_storeu_si512(ptr+192, v13);
+        _mm512_storeu_si512(values+192, v13_val);
+        _mm512_storeu_si512(ptr+208, v14);
+        _mm512_storeu_si512(values+208, v14_val);
+        _mm512_storeu_si512(ptr+224, v15);
+        _mm512_storeu_si512(values+224, v15_val);
+        _mm512_mask_compressstoreu_epi32(ptr+240, 0xFFFF>>rest, v16);
+        _mm512_mask_compressstoreu_epi32(values+240, 0xFFFF>>rest, v16_val);
+    }
+    }
+}
+
+
 
 inline void Sort2VecWithTest(__m512i& input1, __m512i& input2 ){
     __m512i idxNoNeigh = _mm512_set_epi32(15, 13, 14, 11, 12, 9, 10, 7, 8, 5, 6, 3, 4, 1, 2, 0);
@@ -8269,6 +14234,148 @@ static inline IndexType Partition512V2(int array[], IndexType left, IndexType ri
 }
 
 
+/* Use in the sequential qs */
+template <class SortType, class IndexType>
+static inline IndexType QsPartition_pair(SortType array[], SortType values[], IndexType left, IndexType right,
+                                    const SortType pivot){
+
+    for(; left <= right
+         && array[left] <= pivot ; ++left){
+    }
+
+    for(IndexType idx = left ; idx <= right ; ++idx){
+        if( array[idx] <= pivot ){
+            std::swap(array[idx],array[left]);
+            std::swap(values[idx],values[left]);
+            left += 1;
+        }
+    }
+
+    return left;
+}
+
+template <class IndexType>
+static inline IndexType Partition512V2_pair(int array[], int values[], IndexType left, IndexType right,
+                             const int pivot){
+    const IndexType S = 16;//(512/8)/sizeof(int);
+
+    if(right-left+1 < 2*S){
+        return QsPartition_pair<int,IndexType>(array, values, left, right, pivot);
+    }
+
+    __m512i pivotvec = _mm512_set1_epi32(pivot);
+
+    __m512i left_val = _mm512_loadu_si512(&array[left]);
+    __m512i left_val_val = _mm512_loadu_si512(&values[left]);
+    IndexType left_w = left;
+    left += S;
+
+    IndexType right_w = right+1;
+    right -= S-1;
+    __m512i right_val = _mm512_loadu_si512(&array[right]);
+    __m512i right_val_val = _mm512_loadu_si512(&values[right]);
+
+    while(left + S <= right){
+        const IndexType free_left = left - left_w;
+        const IndexType free_right = right_w - right;
+
+        __m512i val;
+        __m512i val_val;
+        if( free_left <= free_right ){
+            val = _mm512_loadu_si512(&array[left]);
+            val_val = _mm512_loadu_si512(&values[left]);
+            left += S;
+        }
+        else{
+            right -= S;
+            val = _mm512_loadu_si512(&array[right]);
+            val_val = _mm512_loadu_si512(&values[right]);
+        }
+
+        __mmask16 mask = _mm512_cmp_epi32_mask(val, pivotvec, _MM_CMPINT_LE);
+
+        const IndexType nb_low = popcount(mask); // count mask
+        // intel _popcnt32 or _mm_countbits_32 or __builtin_popcount(mask)
+        const IndexType nb_high = S-nb_low; // S-nb_low
+
+        //if(mask){// if nb_low
+            _mm512_mask_compressstoreu_epi32(&array[left_w],mask,val);
+            _mm512_mask_compressstoreu_epi32(&values[left_w],mask,val_val);
+            left_w += nb_low;
+        //}
+        //if(mask != 0xFFFF){// if nb_high
+            right_w -= nb_high;
+            _mm512_mask_compressstoreu_epi32(&array[right_w],~mask,val);
+            _mm512_mask_compressstoreu_epi32(&values[right_w],~mask,val_val);
+        //}
+    }
+
+    {
+        const IndexType remaining = right - left;
+        __m512i val = _mm512_loadu_si512(&array[left]);
+        __m512i val_val = _mm512_loadu_si512(&values[left]);
+        left = right;
+
+        __mmask16 mask = _mm512_cmp_epi32_mask(val, pivotvec, _MM_CMPINT_LE);
+
+        __mmask16 mask_low = mask & ~(0xFFFF << remaining);
+        __mmask16 mask_high = (~mask) & ~(0xFFFF << remaining);
+
+        const IndexType nb_low = popcount(mask_low); // count mask
+        // intel _popcnt32 or _mm_countbits_32 or __builtin_popcount(mask)
+        const IndexType nb_high = popcount(mask_high); // S-nb_low
+
+        //if(mask_low){// if nb_low
+            _mm512_mask_compressstoreu_epi32(&array[left_w],mask_low,val);
+            _mm512_mask_compressstoreu_epi32(&values[left_w],mask_low,val_val);
+            left_w += nb_low;
+        //}
+        //if(mask_high){// if nb_high
+            right_w -= nb_high;
+            _mm512_mask_compressstoreu_epi32(&array[right_w],mask_high,val);
+            _mm512_mask_compressstoreu_epi32(&values[right_w],mask_high,val_val);
+        //}
+    }
+    {
+        __mmask16 mask = _mm512_cmp_epi32_mask(left_val, pivotvec, _MM_CMPINT_LE);
+
+        const IndexType nb_low = popcount(mask); // count mask
+        // intel _popcnt32 or _mm_countbits_32 or __builtin_popcount(mask)
+        const IndexType nb_high = S-nb_low; // S-nb_low
+
+        //if(mask){// if nb_low
+            _mm512_mask_compressstoreu_epi32(&array[left_w],mask,left_val);
+            _mm512_mask_compressstoreu_epi32(&values[left_w],mask,left_val_val);
+            left_w += nb_low;
+        //}
+        //if(mask != 0xFFFF){// if nb_high
+            right_w -= nb_high;
+            _mm512_mask_compressstoreu_epi32(&array[right_w],~mask,left_val);
+            _mm512_mask_compressstoreu_epi32(&values[right_w],~mask,left_val_val);
+        //}
+    }
+    {
+        __mmask16 mask = _mm512_cmp_epi32_mask(right_val, pivotvec, _MM_CMPINT_LE);
+
+        const IndexType nb_low = popcount(mask); // count mask
+        // intel _popcnt32 or _mm_countbits_32 or __builtin_popcount(mask)
+        const IndexType nb_high = S-nb_low; // S-nb_low
+
+        //if(mask){// if nb_low
+            _mm512_mask_compressstoreu_epi32(&array[left_w],mask,right_val);
+            _mm512_mask_compressstoreu_epi32(&values[left_w],mask,right_val_val);
+            left_w += nb_low;
+        //}
+        //if(mask != 0xFFFF){// if nb_high
+            right_w -= nb_high;
+            _mm512_mask_compressstoreu_epi32(&array[right_w],~mask,right_val);
+            _mm512_mask_compressstoreu_epi32(&values[right_w],~mask,right_val_val);
+         //}
+    }
+    return left_w;
+}
+
+
 template <class IndexType>
 static inline IndexType Partition512V2(double array[], IndexType left, IndexType right,
                              const double pivot){
@@ -8749,7 +14856,225 @@ public:
 };
 
 
+template <class SortType, class IndexType = size_t>
+class NewQuickSort512V5_pair {
+public:
+    static inline IndexType GetPivot(const SortType array[], const IndexType left, const IndexType right){
+        const IndexType middle = ((right-left)/2) + left;
+        if(array[left] <= array[middle] && array[middle] <= array[right]){
+            return middle;
+        }
+        else if(array[middle] <= array[left] && array[left] <= array[right]){
+            return left;
+        }
+        else return right;
+    }
 
+    static const int SortLimite = 16*64/sizeof(SortType);
+
+    static inline IndexType PivotPartition(SortType array[], SortType values[], const IndexType left, const IndexType right){
+        if(right-left > 1){
+            const IndexType pivotIdx = GetPivot(array, left, right);
+            std::swap(array[pivotIdx], array[right]);
+            std::swap(values[pivotIdx], values[right]);
+            const IndexType part = Partition512V2_pair(array, values, left, right-1, array[right]);
+            std::swap(array[part], array[right]);
+            std::swap(values[part], values[right]);
+            return part;
+        }
+        return left;
+    }
+
+    static inline IndexType Partition(SortType array[], SortType values[],  const IndexType left, const IndexType right,
+                                      const SortType pivot){
+        return  Partition512V2_pair(array, values, left, right, pivot);
+    }
+
+    /* The sequential qs */
+    static void QsSequentialStep(SortType array[], SortType values[], const IndexType left, const IndexType right){
+        if(right-left < SortLimite){
+            SortByVecBitFull_pair(array+left, values+left, right-left+1);
+        }
+        else{
+            const IndexType part = PivotPartition(array,values, left, right);
+            if(part+1 < right) QsSequentialStep(array,values,part+1,right);
+            if(part && left < part-1)  QsSequentialStep(array,values,left,part - 1);
+        }
+    }
+
+    /** A task dispatcher */
+    static inline void QsTask(SortType array[], SortType values[], const IndexType left, const IndexType right, const int deep){
+        if(right-left < SortLimite){
+            SortByVecBitFull_pair(array+left,values+left, right-left+1);
+        }
+        else{
+            const IndexType part = PivotPartition(array,values, left, right);
+            if( deep ){
+                // default(none) has been removed for clang compatibility
+                if(part+1 < right){
+                    #pragma omp task firstprivate(array,values, part, right, deep)
+                    QsTask(array,values,part+1,right, deep - 1);
+                }
+                // #pragma omp task default(none) firstprivate(array, part, right, deep, infOrEqual) // not needed
+                if(part && left < part-1)  QsTask(array,values,left,part - 1, deep - 1);
+            }
+            else {
+                if(part+1 < right) QsSequentialStep(array,values,part+1,right);
+                if(part && left < part-1)  QsSequentialStep(array,values,left,part - 1);
+            }
+        }
+    }
+
+    /* a sequential qs */
+    static inline void QsSequential(SortType array[], SortType values[], const IndexType size){
+        QsSequentialStep(array, values, 0, size-1);
+    }
+
+    /** The openmp quick sort */
+    static inline void QsOmp(SortType array[], SortType values[], const IndexType size){
+        const int nbTasksRequiere = (omp_get_max_threads() * 5);
+        int deep = 0;
+        while( (1 << deep) < nbTasksRequiere ) deep += 1;
+
+#pragma omp parallel
+        {
+#pragma omp master
+            {
+                QsTask(array, values, 0, size - 1 , deep);
+            }
+        }
+    }
+
+    /** The openmp quick sort */
+    static inline void QsOmp2(SortType array[], SortType values[], const IndexType size){
+        IndexType deep = 0;
+        while( (1 << deep) < size ) deep += 1;
+
+#pragma omp parallel
+        {
+#pragma omp master
+            {
+                QsTask(array, values, 0, size - 1 , deep);
+            }
+        }
+    }
+
+
+    /** A task dispatcher */
+    static inline void QsTask3(SortType array[], SortType values[], const IndexType left, const IndexType right){
+        if(right-left < SortLimite){
+            SortByVecBitFull_pair(array+left, values+left, right-left+1);
+        }
+        else{
+            const IndexType part = PivotPartition(array, values, left, right);
+                // default(none) has been removed for clang compatibility
+                if(part+1 < right){
+                    if(right-part+1 > 1000){
+                        #pragma omp task firstprivate(array, values, part, right)
+                        QsTask3(array,values,part+1,right);
+                    }
+                    else{
+                        QsSequentialStep(array,values,part+1,right);
+                    }
+                }
+                // #pragma omp task default(none) firstprivate(array, part, right, deep, infOrEqual) // not needed
+                if(part && left < part-1){
+                    if(part-1 - left > 1000){
+                        QsTask3(array,values,left,part - 1);
+                    }
+                    else{
+                        QsSequentialStep(array,values,left,part - 1);
+                    }
+                }
+        }
+    }
+
+    /** The openmp quick sort */
+    static inline void QsOmp3(SortType array[], SortType values[], const IndexType size){
+
+#pragma omp parallel
+        {
+#pragma omp master
+            {
+                QsTask3(array, values, 0, size - 1);
+            }
+        }
+    }
+
+};
+
+// IPP sort
+
+
+#ifdef USE_IPP
+
+#include <ipp.h>
+#include <ipps_l.h>
+#include <ippbase.h>
+#include <memory>
+
+
+template <class NumType>
+struct GetIppDataType;
+
+// https://software.intel.com/en-us/node/501992
+
+template <>
+struct GetIppDataType<double>{
+    static const IppDataType type = ipp64f;
+};
+
+template <>
+struct GetIppDataType<int>{
+    static const IppDataType type = ipp32s;
+};
+
+template <class NumType>
+class IppSort{
+    static void ipp_sort(Ipp64f* pSrcDst, IppSizeL len, Ipp8u* pBuffer){
+        IppStatus status = ippsSortRadixAscend_64f_I(pSrcDst, len, pBuffer);// TODO cannot find ippsSortRadixAscend_64f_I_L
+        if( status != ippStsNoErr ) {
+            std::cout << "ippsSortRadixAscend() Error, at line " << __LINE__ << ":\n";
+            std::cout << ippGetStatusString(status) << std::endl;
+            exit(1);
+        }
+    }
+    
+    static void ipp_sort(Ipp32s* pSrcDst, IppSizeL len, Ipp8u* pBuffer){
+        IppStatus status = ippsSortRadixAscend_32s_I_L(pSrcDst, len, pBuffer);
+        if( status != ippStsNoErr ) {
+            std::cout << "ippsSortRadixAscend() Error, at line " << __LINE__ << ":\n";
+            std::cout << ippGetStatusString(status) << std::endl;
+            exit(1);
+        }
+    }
+
+
+    const size_t sizeToSort;
+    std::unique_ptr<Ipp8u[]> buffer;
+        
+    
+public:
+    explicit IppSort(const IppSizeL inSizeToSort)
+        : sizeToSort(inSizeToSort){
+        IppSizeL lenghtBuffer = 0;
+        IppStatus status = ippsSortRadixGetBufferSize_L(inSizeToSort, GetIppDataType<NumType>::type, &lenghtBuffer);
+        if( status != ippStsNoErr ) {
+            std::cout << "ippsSortRadixGetBufferSize_L() Error, at line " << __LINE__ << ":\n";
+            std::cout << ippGetStatusString(status) << std::endl;
+            exit(1);
+        }
+        buffer.reset(new Ipp8u[lenghtBuffer]());
+    }
+    
+    void sort(NumType* array){
+        ipp_sort(array, sizeToSort, buffer.get());
+    }
+};
+
+#else
+#warning "IPP is disabled"
+#endif
 
 ////////////////////////////////////////////////////////////
 /// Init functions
@@ -8960,6 +15285,46 @@ void testSortVec(){
     }
 }
 
+void testSortVec_pair(){
+    std::cout << "Start testSortVec_pair int...\n";
+    {
+        {
+            int vecTest[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            int vecRes[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            testSortVec_Core_Equal(vecTest, vecRes);
+        }
+        {
+            int vecTest[16] = { 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+            int vecRes[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+            testSortVec_Core_Equal(vecTest, vecRes);
+        }
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[16];
+            createRandVec(vecTest, 16);
+
+            int values[16];
+            for(int idxval = 0 ; idxval < 16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            {
+                SortVecBitFull_pair(vecTest, values);
+                assertNotSorted(vecTest, 16, "testSortVec_Core_Equal");
+            }
+            for(int idxval = 0 ; idxval < 16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+
+        }
+    }
+}
+
 void testSort2Vec_Core_Equal(const double toSort[16], const double sorted[16]){
     double res[16];
 
@@ -9147,6 +15512,33 @@ void testSort2Vec(){
     }
 }
 
+void testSort2Vec_pair(){
+    std::cout << "Start testSort2Vec_pair int...\n";
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[32];
+            createRandVec(vecTest, 32);
+
+            int values[32];
+            for(int idxval = 0 ; idxval < 32 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+            {
+                Checker<int> checker(vecTest, vecTest, 32);
+                Sort2VecBitFull_pair(vecTest, values);
+                assertNotSorted(vecTest, 32, "testSortVec_Core_Equal");
+            }
+            for(int idxval = 0 ; idxval < 32 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+}
+
 
 void testSort3Vec(){
     std::cout << "Start testSort3Vec double...\n";
@@ -9189,6 +15581,36 @@ void testSort3Vec(){
                 Checker<int> checker(vecTest, vecTest, 48);
                 Sort3VecBitFull(vecTest, vecTest+16, vecTest+32);
                 assertNotSorted(vecTest, 48, "testSortVec_Core_Equal");
+            }
+        }
+    }
+}
+
+void testSort3Vec_pair(){
+    std::cout << "Start testSort3Vec_pair int...\n";
+    {
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[48];
+            createRandVec(vecTest, 48);
+
+            int values[48];
+            for(int idxval = 0 ; idxval < 48 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+            {
+                Checker<int> checker(vecTest, vecTest, 48);
+                Sort3VecBitFull_pair(vecTest, values);
+                assertNotSorted(vecTest, 48, "testSortVec_Core_Equal");
+            }
+
+            for(int idxval = 0 ; idxval < 48 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
             }
         }
     }
@@ -9281,6 +15703,37 @@ void testSort4Vec(){
     }
 }
 
+void testSort4Vec_pair(){
+    std::cout << "Start testSort4Vec_pair int...\n";
+    {
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[64];
+            createRandVec(vecTest, 64);
+
+            int values[64];
+            for(int idxval = 0 ; idxval < 64 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            {
+                Checker<int> checker(vecTest, vecTest, 64);
+                Sort4VecBitFull_pair(vecTest, values);
+                assertNotSorted(vecTest, 64, "testSortVec_Core_Equal");
+            }
+
+            for(int idxval = 0 ; idxval < 64 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 void testSort5Vec(){
     std::cout << "Start testSort5Vec double...\n";
     {
@@ -9308,6 +15761,36 @@ void testSort5Vec(){
             Checker<int> checker(vecTest, vecTest, 5*16);
             Sort5VecBitFull(vecTest, vecTest+16, vecTest+16*2, vecTest+16*3, vecTest+16*4);
             assertNotSorted(vecTest, 5*16, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+void testSort5Vec_pair(){
+    std::cout << "Start testSort5Vec_pair int...\n";
+    {
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[5*16];
+
+            createRandVec(vecTest, 5*16);
+
+            int values[5*16];
+            for(int idxval = 0 ; idxval < 5*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, 5*16);
+            Sort5VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, 5*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < 5*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -9344,6 +15827,36 @@ void testSort6Vec(){
     }
 }
 
+void testSort6Vec_pair(){
+    std::cout << "Start testSort6Vec_pair int...\n";
+    {
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[6*16];
+
+            createRandVec(vecTest, 6*16);
+
+            int values[6*16];
+            for(int idxval = 0 ; idxval < 6*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, 6*16);
+            Sort6VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, 6*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < 6*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 
 void testSort7Vec(){
     std::cout << "Start testSort7Vec double...\n";
@@ -9376,6 +15889,37 @@ void testSort7Vec(){
     }
 }
 
+void testSort7Vec_pair(){
+    std::cout << "Start testSort7Vec_pair int...\n";
+    {
+        static const int Size = 7;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort7VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 void testSort8Vec(){
     std::cout << "Start testSort8Vec double...\n";
     {
@@ -9403,6 +15947,37 @@ void testSort8Vec(){
             Checker<int> checker(vecTest, vecTest, 8*16);
             Sort8VecBitFull(vecTest, vecTest+16, vecTest+16*2, vecTest+16*3, vecTest+16*4, vecTest+16*5, vecTest+16*6, vecTest+16*7);
             assertNotSorted(vecTest, 8*16, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+void testSort8Vec_pair(){
+    std::cout << "Start testSort8Vec_pair int...\n";
+    {
+        static const int Size = 8;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort8VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -9443,6 +16018,37 @@ void testSort9Vec(){
     }
 }
 
+void testSort9Vec_pair(){
+    std::cout << "Start testSort9Vec_pair int...\n";
+    {
+        static const int Size = 9;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort9VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 void testSort10Vec(){
     const int nbVecs = 10;
     std::cout << "Start testSort10Vec double...\n";
@@ -9475,6 +16081,38 @@ void testSort10Vec(){
             Sort10VecBitFull(vecTest, vecTest+sizeVec, vecTest+sizeVec*2, vecTest+sizeVec*3, vecTest+sizeVec*4, vecTest+sizeVec*5, vecTest+sizeVec*6, vecTest+sizeVec*7,
                             vecTest+sizeVec*8, vecTest+sizeVec*9);
             assertNotSorted(vecTest, nbVecs*sizeVec, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+
+void testSort10Vec_pair(){
+    std::cout << "Start testSort10Vec_pair int...\n";
+    {
+        static const int Size = 10;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort10VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -9515,6 +16153,37 @@ void testSort11Vec(){
     }
 }
 
+void testSort11Vec_pair(){
+    std::cout << "Start testSort11Vec_pair int...\n";
+    {
+        static const int Size = 11;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort11VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 void testSort12Vec(){
     const int nbVecs = 12;
     std::cout << "Start testSort12Vec double...\n";
@@ -9547,6 +16216,37 @@ void testSort12Vec(){
             Sort12VecBitFull(vecTest, vecTest+sizeVec, vecTest+sizeVec*2, vecTest+sizeVec*3, vecTest+sizeVec*4, vecTest+sizeVec*5, vecTest+sizeVec*6, vecTest+sizeVec*7,
                             vecTest+sizeVec*8, vecTest+sizeVec*9, vecTest+sizeVec*10, vecTest+sizeVec*11);
             assertNotSorted(vecTest, nbVecs*sizeVec, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+void testSort12Vec_pair(){
+    std::cout << "Start testSort12Vec_pair int...\n";
+    {
+        static const int Size = 12;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort12VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -9587,6 +16287,37 @@ void testSort13Vec(){
     }
 }
 
+void testSort13Vec_pair(){
+    std::cout << "Start testSort13Vec_pair int...\n";
+    {
+        static const int Size = 13;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort13VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
+
 void testSort14Vec(){
     const int nbVecs = 14;
     std::cout << "Start testSort14Vec double...\n";
@@ -9619,6 +16350,37 @@ void testSort14Vec(){
             Sort14VecBitFull(vecTest, vecTest+sizeVec, vecTest+sizeVec*2, vecTest+sizeVec*3, vecTest+sizeVec*4, vecTest+sizeVec*5, vecTest+sizeVec*6, vecTest+sizeVec*7,
                             vecTest+sizeVec*8, vecTest+sizeVec*9, vecTest+sizeVec*10, vecTest+sizeVec*11,vecTest+sizeVec*12, vecTest+sizeVec*13);
             assertNotSorted(vecTest, nbVecs*sizeVec, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+void testSort14Vec_pair(){
+    std::cout << "Start testSort14Vec_pair int...\n";
+    {
+        static const int Size = 14;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort14VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -9658,7 +16420,36 @@ void testSort15Vec(){
         }
     }
 }
+void testSort15Vec_pair(){
+    std::cout << "Start testSort15Vec_pair int...\n";
+    {
+        static const int Size = 15;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
 
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort15VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
+        }
+    }
+}
 
 void testSort16Vec(){
     const int nbVecs = 16;
@@ -9692,6 +16483,37 @@ void testSort16Vec(){
             Sort16VecBitFull(vecTest, vecTest+sizeVec, vecTest+sizeVec*2, vecTest+sizeVec*3, vecTest+sizeVec*4, vecTest+sizeVec*5, vecTest+sizeVec*6, vecTest+sizeVec*7,
                             vecTest+sizeVec*8, vecTest+sizeVec*9, vecTest+sizeVec*10, vecTest+sizeVec*11,vecTest+sizeVec*12, vecTest+sizeVec*13, vecTest+sizeVec*14, vecTest+sizeVec*15);
             assertNotSorted(vecTest, nbVecs*sizeVec, "testSortVec_Core_Equal");
+        }
+    }
+}
+
+void testSort16Vec_pair(){
+    std::cout << "Start testSort16Vec_pair int...\n";
+    {
+        static const int Size = 16;
+        srand48(0);
+        const static int NbLoops = 1000;
+        for(int idx = 0 ; idx < NbLoops ; ++idx){
+            int vecTest[Size*16];
+
+            createRandVec(vecTest, Size*16);
+
+            int values[Size*16];
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                values[idxval] = vecTest[idxval]*100+1;
+            }
+
+            Checker<int> checker(vecTest, vecTest, Size*16);
+            Sort16VecBitFull_pair(vecTest, values);
+            assertNotSorted(vecTest, Size*16, "testSortVec_Core_Equal");
+
+            for(int idxval = 0 ; idxval < Size*16 ; ++idxval){
+                if(values[idxval] != vecTest[idxval]*100+1){
+                    std::cout << "Error in testSortVec_pair "
+                                 " is " << values[idxval] <<
+                                 " should be " << vecTest[idxval]*100+1 << std::endl;
+                }
+            }
         }
     }
 }
@@ -10125,6 +16947,45 @@ void testNewQs512(){
 }
 
 template <class NumType>
+void testNewQs512_pair(){
+    std::cout << "Start NewQuickSort512V5_pair...\n";
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        std::unique_ptr<NumType[]> values(new NumType[idx]);
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            values[idxval] = array[idxval]*100+1;
+        }
+        NewQuickSort512V5_pair<NumType,size_t>::QsSequential(array.get(), values.get(), idx);
+        assertNotSorted(array.get(), idx, "");
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            if(values[idxval] != array[idxval]*100+1){
+                std::cout << "Error in testNewPartition512V2_pair, pair/key do not match" << std::endl;
+                exit(0);
+            }
+        }
+    }
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        std::unique_ptr<NumType[]> values(new NumType[idx]);
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            values[idxval] = array[idxval]*100+1;
+        }
+        NewQuickSort512V5_pair<NumType,size_t>::QsOmp(array.get(), values.get(), idx);
+        assertNotSorted(array.get(), idx, "");
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            if(values[idxval] != array[idxval]*100+1){
+                std::cout << "Error in testNewPartition512V2_pair, pair/key do not match" << std::endl;
+                exit(0);
+            }
+        }
+    }
+}
+
+template <class NumType>
 void testCppSort(){
     std::cout << "Start testCppSort...\n";
     for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
@@ -10165,6 +17026,38 @@ void testSmallVecSort(){
                 createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
                 SortByVecBitFull(array.get(), idx);
                 assertNotSorted(array.get(), idx, "");
+            }
+        }
+    }
+}
+
+template <class NumType>
+void testSmallVecSort_pair(){
+    std::cout << "Start testSmallVecSort_pair bitfull...\n";
+    {
+        const int SizeVec = 64/sizeof(NumType);
+        const int MaxSizeAllVec = SizeVec * 16;
+        for(size_t idx = 1 ; idx <= MaxSizeAllVec; idx++){
+            std::cout << "   " << idx << std::endl;
+            std::unique_ptr<NumType[]> array(new NumType[idx]);
+            std::unique_ptr<NumType[]> values(new NumType[idx]);
+            for(int idxTest = 0 ; idxTest < 100 ; ++idxTest){
+                createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+
+                for(int idxval = 0 ; idxval < idx ; ++idxval){
+                    values[idxval] = array[idxval]*100+1;
+                }
+
+                SortByVecBitFull_pair(array.get(), values.get(), idx);
+                assertNotSorted(array.get(), idx, "");
+
+                for(int idxval = 0 ; idxval < idx ; ++idxval){
+                    if(values[idxval] != array[idxval]*100+1){
+                        std::cout << "Error in testSortVec_pair "
+                                     " is " << values[idxval] <<
+                                     " should be " << array[idxval]*100+1 << std::endl;
+                    }
+                }
             }
         }
     }
@@ -10292,6 +17185,67 @@ void testNewPartition512V2(){
     }
 }
 
+template <class NumType>
+void testNewPartition512V2_pair(){
+    std::cout << "Start testNewPartition512V2_pair...\n";
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        std::unique_ptr<NumType[]> values(new NumType[idx]);
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            values[idxval] = array[idxval]*100+1;
+        }
+        const NumType pivot = NumType(idx/2);
+        size_t limite = NewQuickSort512V5_pair<NumType,size_t>::Partition(&array[0], &values[0], 0, idx-1, pivot);
+        assertNotPartitioned(array.get(), idx, pivot, limite, "");
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            if(values[idxval] != array[idxval]*100+1){
+                std::cout << "Error in testNewPartition512V2_pair, pair/key do not match" << std::endl;
+            }
+        }
+    }
+    for(size_t idx = 1 ; idx <= 1000; ++idx){
+        if(idx%100 == 0) std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        std::unique_ptr<NumType[]> values(new NumType[idx]);
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            values[idxval] = array[idxval]*100+1;
+        }
+        const NumType pivot = NumType(idx/2);
+        size_t limite = NewQuickSort512V5_pair<NumType,size_t>::Partition(&array[0], &values[0], 0, idx-1, pivot);
+        assertNotPartitioned(array.get(), idx, pivot, limite, "");
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            if(values[idxval] != array[idxval]*100+1){
+                std::cout << "Error in testNewPartition512V2_pair, pair/key do not match" << std::endl;
+            }
+        }
+    }
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+
+        for(size_t idxVal = 0 ; idxVal < idx ; ++idxVal){
+            array[idxVal] = NumType(idx);
+        }
+
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        std::unique_ptr<NumType[]> values(new NumType[idx]);
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            values[idxval] = array[idxval]*100+1;
+        }
+        const NumType pivot = NumType(idx/2);
+        size_t limite = NewQuickSort512V5_pair<NumType,size_t>::Partition(&array[0], &values[0], 0, idx-1, pivot);
+        assertNotPartitioned(array.get(), idx, pivot, limite, "");
+        for(size_t idxval = 0 ; idxval < idx ; ++idxval){
+            if(values[idxval] != array[idxval]*100+1){
+                std::cout << "Error in testNewPartition512V2_pair, pair/key do not match" << std::endl;
+            }
+        }
+    }
+}
+
 void testPopcount(){
     std::cout << "Start testPopcount...\n";
     auto assertFunc = [](const int trueres, const int test, const int val, const std::string& logbuf){
@@ -10341,26 +17295,43 @@ void testAll(){
     testPopcount();
 
     testSortVec();
+    testSortVec_pair();
     testSort2Vec();
+    testSort2Vec_pair();
     testSort3Vec();
+    testSort3Vec_pair();
     testSort4Vec();
+    testSort4Vec_pair();
     testSort5Vec();
+    testSort5Vec_pair();
     testSort6Vec();
+    testSort6Vec_pair();
     testSort7Vec();
+    testSort7Vec_pair();
     testSort8Vec();
+    testSort8Vec_pair();
     testMerge2Vec();
 
 
     testSort9Vec();
+    testSort9Vec_pair();
     testSort10Vec();
+    testSort10Vec_pair();
     testSort11Vec();
+    testSort11Vec_pair();
     testSort12Vec();
+    testSort12Vec_pair();
     testSort13Vec();
+    testSort13Vec_pair();
     testSort14Vec();
+    testSort14Vec_pair();
     testSort15Vec();
+    testSort15Vec_pair();
     testSort16Vec();
+    testSort16Vec_pair();
 
     testSmallVecSort<int>();
+        testSmallVecSort_pair<int>();
     testSmallVecSort<double>();
     testBitonic<double>();
     testBitonicV2<double>();
@@ -10385,11 +17356,13 @@ void testAll(){
     testNewQs<int>();
       testNewQs512<int>();
     testInsertion<int>();
+    testNewQs512_pair<int>();
 
     testCppPartition<int>();
     testQsPartition<int>();
     testNewPartition<int>();
       testNewPartition512<int>();
+      testNewPartition512V2_pair<int>();
 
     testCppPartition<double>();
     testQsPartition<double>();
@@ -10406,30 +17379,36 @@ void testAll(){
 #include <fstream>
 
 template <class NumType>
-void timeAll(std::ostream& fres, const std::string prefix){
+void timeAll(std::ostream& fres){
     const size_t MaxSize = 1073741824;//10L*1024L*1024L*1024L;//10*1024*1024*1024;262144*8;//
     const int NbLoops = 5;
 
     std::unique_ptr<NumType[]> array(new NumType[MaxSize]);
 
+    fres << "#size\tstdsort\tstdsortlogn\t512bitfull\t512bitfulllogn";
+    fres << "\t512bitfullv2\t512bitfulllognv2";
+    fres << "\t512bitfullv3\t512bitfulllognv3";
+    fres << "\t512bitfullv4\t512bitfulllognv4";
+    fres << "\t512bitfullv5\t512bitfulllognv5";
+#ifdef USE_IPP
+    fres << "\tipp\tipplogn";
+#endif
+    fres << "\n";
+
     for(size_t currentSize = 64 ; currentSize <= MaxSize ; currentSize *= 8 ){
         std::cout << "currentSize " << currentSize << std::endl;
 
 
-        double allTimes[15][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
+        double allTimes[7][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                              { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                              { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                              { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                                  { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                                  { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                                  { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                                  { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
+                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
+#ifdef USE_IPP
+        IppSort<NumType> ippsort(currentSize);
+#endif
 
         for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
             std::cout << "  idxLoop " << idxLoop << std::endl;
@@ -10452,89 +17431,11 @@ void timeAll(std::ostream& fres, const std::string prefix){
                 srand48((long int)(idxLoop));
                 createRandVec(array.get(), currentSize);
                 dtimer timer;
-                FQuickSort<NumType,size_t>::QsSequential(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    FQuickSort " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 1;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            /*{
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                BitonicSortV2<NumType,size_t>::BsSequentialV2(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    bt " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 2;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                BitonicSortAVX512<NumType, size_t>::BsSequentialV2(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    BitonicSortAVX512 " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 3;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                BitonicSortAVX512WithTest<NumType, size_t>::BsSequentialV2(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    BitonicSortAVX512WithTest " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 4;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                BitonicSortAVX512WithMerge<NumType, size_t>::BsSequentialV2(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    BitonicSortAVX512WithMerge " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 5;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                NewQuickSort<NumType, size_t>::QsSequential(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    NewQuickSort " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 6;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }*/
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
                 NewQuickSort512<NumType, size_t>::QsSequential(array.get(), currentSize);
                 timer.stop();
                 std::cout << "    NewQuickSort512 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 7;
+                const int idxType = 1;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
@@ -10547,7 +17448,7 @@ void timeAll(std::ostream& fres, const std::string prefix){
                 timer.stop();
                 std::cout << "    NewQuickSort512V2 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 8;
+                const int idxType = 2;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
@@ -10560,33 +17461,7 @@ void timeAll(std::ostream& fres, const std::string prefix){
                 timer.stop();
                 std::cout << "    NewQuickSort512V3 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 9;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            /*{
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                HeapSort<NumType>::sort(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    HeapSort " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 10;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }*/
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                dtimer timer;
-                BitonicSortAVX512V2<NumType>::BsSequentialV2(array.get(), currentSize);
-                timer.stop();
-                std::cout << "    BitonicSortAVX512V2 " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 11;
+                const int idxType = 3;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
@@ -10599,7 +17474,7 @@ void timeAll(std::ostream& fres, const std::string prefix){
                 timer.stop();
                 std::cout << "    NewQuickSort512V4 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 12;
+                const int idxType = 4;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
@@ -10612,33 +17487,120 @@ void timeAll(std::ostream& fres, const std::string prefix){
                 timer.stop();
                 std::cout << "    NewQuickSort512V5 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 13;
+                const int idxType = 5;
+                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
+                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
+                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
+            }
+#ifdef USE_IPP
+            {
+                srand48((long int)(idxLoop));
+                createRandVec(array.get(), currentSize);
+                dtimer timer;
+                ippsort.sort(array.get());
+                timer.stop();
+                std::cout << "    IPPSORT " << timer.getElapsed() << std::endl;
+                useVec(array.get(), currentSize);
+                const int idxType = 6;
+                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
+                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
+                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
+            }
+#endif
+        }
+
+        std::cout << currentSize << ",\"stdsort\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v1\"," << allTimes[1][0] << "," << allTimes[1][1] << "," << allTimes[1][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v2\"," << allTimes[2][0] << "," << allTimes[2][1] << "," << allTimes[2][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v3\"," << allTimes[3][0] << "," << allTimes[3][1] << "," << allTimes[3][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v4\"," << allTimes[4][0] << "," << allTimes[4][1] << "," << allTimes[4][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v5\"," << allTimes[5][0] << "," << allTimes[5][1] << "," << allTimes[5][2] << "\n";
+        std::cout << currentSize << ",\"ipp\"," << allTimes[6][0] << "," << allTimes[6][1] << "," << allTimes[6][2] << "\n";
+
+
+        fres << currentSize << "\t"
+             << allTimes[0][2] << "\t" << allTimes[0][2]/(currentSize*std::log(currentSize)) << "\t"
+             << allTimes[1][2] << "\t" << allTimes[1][2]/(currentSize*std::log(currentSize)) << "\t"
+                << allTimes[2][2] << "\t" << allTimes[2][2]/(currentSize*std::log(currentSize)) << "\t"
+                << allTimes[3][2] << "\t" << allTimes[3][2]/(currentSize*std::log(currentSize)) << "\t"
+                << allTimes[4][2] << "\t" << allTimes[4][2]/(currentSize*std::log(currentSize)) << "\t"
+                << allTimes[5][2] << "\t" << allTimes[5][2]/(currentSize*std::log(currentSize));
+
+#ifdef USE_IPP
+        fres << "\t" << allTimes[6][2] << "\t" <<
+                allTimes[6][2]/(currentSize*std::log(currentSize));
+#endif
+        fres << "\n";
+    }
+
+}
+
+
+template <class NumType>
+void timeAll_pair(std::ostream& fres){
+    const size_t MaxSize = 1073741824;//10L*1024L*1024L*1024L;//10*1024*1024*1024;262144*8;//
+    const int NbLoops = 5;
+
+    std::unique_ptr<NumType[]> array(new NumType[MaxSize]);
+    std::unique_ptr<NumType[]> values(new NumType[MaxSize]());
+
+    std::unique_ptr<std::array<NumType,2>[]> arrayStruct(new std::array<NumType,2>[MaxSize]());
+
+    fres << "#size\tstdsort\tstdsortlogn";
+    fres << "\t512bitfullv5\t512bitfulllognv5";
+    fres << "\n";
+
+    for(size_t currentSize = 64 ; currentSize <= MaxSize ; currentSize *= 8 ){
+        std::cout << "currentSize " << currentSize << std::endl;
+
+        double allTimes[7][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
+                            { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
+
+        for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+            std::cout << "  idxLoop " << idxLoop << std::endl;
+            {
+                srand48((long int)(idxLoop));
+                createRandVec(array.get(), currentSize);
+                for(int idxItem = 0 ; idxItem < currentSize ; ++idxItem){
+                    arrayStruct[idxItem][0] = array[idxItem];
+                }
+                dtimer timer;
+                std::sort(&arrayStruct[0], &arrayStruct[currentSize], [&](const std::array<NumType,2>& v1, const std::array<NumType,2>& v2){
+                    return v1[0] < v2[0];
+                });
+                timer.stop();
+                std::cout << "    std::sort " << timer.getElapsed() << std::endl;
+                useVec(array.get(), currentSize);
+                const int idxType = 0;
+                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
+                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
+                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
+            }
+            {
+                srand48((long int)(idxLoop));
+                createRandVec(array.get(), currentSize);
+                dtimer timer;
+                NewQuickSort512V5_pair<NumType, size_t>::QsSequential(array.get(), values.get(), currentSize);
+                timer.stop();
+                std::cout << "    NewQuickSort512V5 " << timer.getElapsed() << std::endl;
+                useVec(array.get(), currentSize);
+                const int idxType = 1;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
             }
         }
 
-        fres << prefix << currentSize << ",\"stdsort\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
-        fres << prefix << currentSize << ",\"qs\"," << allTimes[1][0] << "," << allTimes[1][1] << "," << allTimes[1][2] << "\n";
-        /*fres << prefix << currentSize << ",\"bt\"," << allTimes[2][0] << "," << allTimes[2][1] << "," << allTimes[2][2] << "\n";
-        fres << prefix << currentSize << ",\"bt512\"," << allTimes[3][0] << "," << allTimes[3][1] << "," << allTimes[3][2] << "\n";
-        fres << prefix << currentSize << ",\"bt512wt\"," << allTimes[4][0] << "," << allTimes[4][1] << "," << allTimes[4][2] << "\n";
-        fres << prefix << currentSize << ",\"bt512wm\"," << allTimes[5][0] << "," << allTimes[5][1] << "," << allTimes[5][2] << "\n";
-        fres << prefix << currentSize << ",\"newqs\"," << allTimes[6][0] << "," << allTimes[6][1] << "," << allTimes[6][2] << "\n";*/
-        fres << prefix << currentSize << ",\"newqs512\"," << allTimes[7][0] << "," << allTimes[7][1] << "," << allTimes[7][2] << "\n";
-        fres << prefix << currentSize << ",\"newqs512v2\"," << allTimes[8][0] << "," << allTimes[8][1] << "," << allTimes[8][2] << "\n";
-        fres << prefix << currentSize << ",\"newqs512v3\"," << allTimes[9][0] << "," << allTimes[9][1] << "," << allTimes[9][2] << "\n";
-        //fres << prefix << currentSize << ",\"heapsort\"," << allTimes[10][0] << "," << allTimes[10][1] << "," << allTimes[10][2] << "\n";
-        fres << prefix << currentSize << ",\"bt512v2\"," << allTimes[11][0] << "," << allTimes[11][1] << "," << allTimes[11][2] << "\n";
-        fres << prefix << currentSize << ",\"newqs512v4\"," << allTimes[12][0] << "," << allTimes[12][1] << "," << allTimes[12][2] << "\n";
-        fres << prefix << currentSize << ",\"newqs512v5\"," << allTimes[13][0] << "," << allTimes[13][1] << "," << allTimes[13][2] << "\n";
-        fres.flush();
+        std::cout << currentSize << ",\"stdsort\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
+        std::cout << currentSize << ",\"newqs512v5\"," << allTimes[1][0] << "," << allTimes[1][1] << "," << allTimes[1][2] << "\n";
+
+        fres << currentSize << "\t"
+             << allTimes[0][2] << "\t" << allTimes[0][2]/(currentSize*std::log(currentSize)) << "\t"
+             << allTimes[1][2] << "\t" << allTimes[1][2]/(currentSize*std::log(currentSize));
+        fres << "\n";
     }
 
 }
-
-
 
 template <class NumType>
 void timeAllOmp(std::ostream& fres, const std::string prefix){
@@ -10709,14 +17671,19 @@ void timeAllOmp(std::ostream& fres, const std::string prefix){
 
 
 template <class NumType>
-void timeSmall(std::ostream& fres, const std::string prefix){
-    const size_t MaxSizeV1 = 4*64/sizeof(NumType);
+void timeSmall(std::ostream& fres){
     const size_t MaxSizeV2 = 16*64/sizeof(NumType);
     const int NbLoops = 10000;
 
     std::unique_ptr<NumType[]> array(new NumType[MaxSizeV2*NbLoops]);
 
-    double allTimes[6] = {0};
+    double allTimes[3] = {0};
+
+        fres << "#size\tstdsort\tstdsortlogn\tnewqs512bitfull\tnewqs512bitfulllogn";
+#ifdef USE_IPP
+        fres << "\tipp\tipplogn";
+#endif
+        fres << "\n";
 
     for(size_t currentSize = 1 ; currentSize <= MaxSizeV2 ; currentSize++ ){
         std::cout << "currentSize " << currentSize << std::endl;
@@ -10739,49 +17706,6 @@ void timeSmall(std::ostream& fres, const std::string prefix){
             const int idxType = 0;
             allTimes[idxType] = timer.getElapsed()/double(NbLoops);
         }
-        std::cout << "    insertion " << std::endl;
-        {
-            srand48((long int)(currentSize));
-            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                useVec(&array[idxLoop*currentSize], currentSize);
-                createRandVec(&array[idxLoop*currentSize], currentSize);
-            }
-        }
-        {
-            dtimer timer;
-            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                InsertionSort(&array[idxLoop*currentSize], currentSize);
-            }
-            timer.stop();
-            std::cout << "    insertion " << timer.getElapsed() << std::endl;
-            const int idxType = 1;
-            allTimes[idxType] = timer.getElapsed()/double(NbLoops);
-        }
-        if(currentSize <= MaxSizeV1){
-            std::cout << "    newqs512 " << std::endl;
-            {
-                srand48((long int)(currentSize));
-                for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                    useVec(&array[idxLoop*currentSize], currentSize);
-                    createRandVec(&array[idxLoop*currentSize], currentSize);
-                }
-            }
-            {
-                dtimer timer;
-                for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                    SortByVec(&array[idxLoop*currentSize], currentSize);
-                }
-                timer.stop();
-                std::cout << "    newqs512 " << timer.getElapsed() << std::endl;
-                const int idxType = 2;
-                allTimes[idxType] = timer.getElapsed()/double(NbLoops);
-            }
-            {
-                for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                    useVec(&array[idxLoop*currentSize], currentSize);
-                }
-            }
-        }
         std::cout << "    newqs512bitfull " << std::endl;
         {
             srand48((long int)(currentSize));
@@ -10797,7 +17721,7 @@ void timeSmall(std::ostream& fres, const std::string prefix){
             }
             timer.stop();
             std::cout << "    newqs512bitfull " << timer.getElapsed() << std::endl;
-            const int idxType = 3;
+            const int idxType = 1;
             allTimes[idxType] = timer.getElapsed()/double(NbLoops);
         }
         {
@@ -10805,7 +17729,8 @@ void timeSmall(std::ostream& fres, const std::string prefix){
                 useVec(&array[idxLoop*currentSize], currentSize);
             }
         }
-        std::cout << "    heapsort " << std::endl;
+#ifdef USE_IPP
+        std::cout << "    ipp " << std::endl;
         {
             srand48((long int)(currentSize));
             for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
@@ -10814,13 +17739,14 @@ void timeSmall(std::ostream& fres, const std::string prefix){
             }
         }
         {
+            IppSort<NumType> ippsort(currentSize);
             dtimer timer;
             for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                HeapSort<NumType>::sort(&array[idxLoop*currentSize], currentSize);
+                ippsort.sort(&array[idxLoop*currentSize]);
             }
             timer.stop();
-            std::cout << "    heapsort " << timer.getElapsed() << std::endl;
-            const int idxType = 4;
+            std::cout << "    ipp " << timer.getElapsed() << std::endl;
+            const int idxType = 2;
             allTimes[idxType] = timer.getElapsed()/double(NbLoops);
         }
         {
@@ -10828,58 +17754,110 @@ void timeSmall(std::ostream& fres, const std::string prefix){
                 useVec(&array[idxLoop*currentSize], currentSize);
             }
         }
-        std::cout << "    heapsort512 " << std::endl;
-        {
-            srand48((long int)(currentSize));
-            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                useVec(&array[idxLoop*currentSize], currentSize);
-                createRandVec(&array[idxLoop*currentSize], currentSize);
-            }
-        }
-        {
-            dtimer timer;
-            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                HeapSort512<NumType>::HeapSortNotMultiple(&array[idxLoop*currentSize], currentSize);
-            }
-            timer.stop();
-            std::cout << "    heapsort512 " << timer.getElapsed() << std::endl;
-            const int idxType = 5;
-            allTimes[idxType] = timer.getElapsed()/double(NbLoops);
-        }
-        {
-            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
-                useVec(&array[idxLoop*currentSize], currentSize);
-            }
-        }
+#endif
+        fres << currentSize << "\t" << allTimes[0] << "\t" <<
+                allTimes[0]/(currentSize*std::log(currentSize)) << "\t" << allTimes[1] << "\t" <<
+                allTimes[1]/(currentSize*std::log(currentSize));
+#ifdef USE_IPP
+        fres << "\t" << allTimes[2] << "\t" <<
+                allTimes[2]/(currentSize*std::log(currentSize));
+#endif
+        fres << "\n";
+    }
 
-        fres << prefix << currentSize << ",\"stdsort\"," << allTimes[0] << "\n";
-        fres << prefix << currentSize << ",\"insertion\"," << allTimes[1] << "\n";
-        if(currentSize <= MaxSizeV1) fres << prefix << currentSize << ",\"newqs512\"," << allTimes[2] << "\n";
-        else  fres << prefix << currentSize << ",\"newqs512\"," << "nan" << "\n";
-        fres << prefix << currentSize << ",\"newqs512bitfull\"," << allTimes[3] << "\n";
-        fres << prefix << currentSize << ",\"heapsort\"," << allTimes[4] << "\n";
-        fres << prefix << currentSize << ",\"heapsort512\"," << allTimes[5] << "\n";
+}
+
+
+
+template <class NumType>
+void timeSmall_pair(std::ostream& fres){
+    const size_t MaxSizeV2 = 16*64/sizeof(NumType);
+    const int NbLoops = 10000;
+
+    std::unique_ptr<NumType[]> array(new NumType[MaxSizeV2*NbLoops]);
+    std::unique_ptr<NumType[]> indexes(new NumType[MaxSizeV2*NbLoops]());
+
+    std::unique_ptr<std::array<NumType,2>[]> arrayStruct(new std::array<NumType,2>[MaxSizeV2*NbLoops]());
+
+
+    double allTimes[3] = {0};
+
+        fres << "#size\tstdsort\tstdsortlogn\tnewqs512bitfull\tnewqs512bitfulllogn";
+        fres << "\n";
+
+    for(size_t currentSize = 1 ; currentSize <= MaxSizeV2 ; currentSize++ ){
+        std::cout << "currentSize " << currentSize << std::endl;
+        std::cout << "    std::sort " << std::endl;
+        {
+            srand48((long int)(currentSize));
+            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+                createRandVec(&array[idxLoop*currentSize], currentSize);
+                for(int idxItem = 0 ; idxItem < currentSize ; ++idxItem){
+                    arrayStruct[idxLoop*currentSize+idxItem][0] = array[idxLoop*currentSize+idxItem];
+                }
+            }
+        }
+        {
+            dtimer timer;
+            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+                std::sort(&arrayStruct[idxLoop*currentSize], &arrayStruct[(idxLoop+1)*currentSize], [&](const std::array<NumType,2>& v1, const std::array<NumType,2>& v2){
+                    return v1[0] < v2[0];
+                });
+            }
+            timer.stop();
+            std::cout << "    std::sort " << timer.getElapsed() << std::endl;
+            const int idxType = 0;
+            allTimes[idxType] = timer.getElapsed()/double(NbLoops);
+        }
+        std::cout << "    newqs512bitfull " << std::endl;
+        {
+            srand48((long int)(currentSize));
+            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+                useVec(&array[idxLoop*currentSize], currentSize);
+                createRandVec(&array[idxLoop*currentSize], currentSize);
+            }
+        }
+        {
+            dtimer timer;
+            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+                SortByVecBitFull_pair(&array[idxLoop*currentSize], &indexes[idxLoop*currentSize], currentSize);
+            }
+            timer.stop();
+            std::cout << "    newqs512bitfull " << timer.getElapsed() << std::endl;
+            const int idxType = 1;
+            allTimes[idxType] = timer.getElapsed()/double(NbLoops);
+        }
+        {
+            for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+                useVec(&array[idxLoop*currentSize], currentSize);
+            }
+        }
+        fres << currentSize << "\t" << allTimes[0] << "\t" <<
+                allTimes[0]/(currentSize*std::log(currentSize)) << "\t" << allTimes[1] << "\t" <<
+                allTimes[1]/(currentSize*std::log(currentSize));
+        fres << "\n";
     }
 
 }
 
 
 template <class NumType>
-void timePartitionAll(std::ostream& fres, const std::string prefix){
+void timePartitionAll(std::ostream& fres){
     const size_t MaxSize = 1073741824;//10L*1024L*1024L*1024L;//10*1024*1024*1024;
     const int NbLoops = 20;
 
     std::unique_ptr<NumType[]> array(new NumType[MaxSize]);
 
+    fres << "#size\tstdpart\tstdpartn\tbt512\tbt512n\tbt512v2\tbt512v2n";
+    fres << "\n";
+
     for(size_t currentSize = 64 ; currentSize <= MaxSize ; currentSize *= 8 ){
         std::cout << "currentSize " << currentSize << std::endl;
 
 
-        double allTimes[5][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
+        double allTimes[3][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
                             { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                            { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                            { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
-                            { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
+                                 { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
 
         for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
             std::cout << "  idxLoop " << idxLoop << std::endl;
@@ -10904,38 +17882,11 @@ void timePartitionAll(std::ostream& fres, const std::string prefix){
                 createRandVec(array.get(), currentSize);
                 const NumType pivot = array[(idxLoop*currentSize/NbLoops)];
                 dtimer timer;
-                FQuickSort<NumType,size_t>::QsPartition(array.get(), 0, currentSize-1, pivot);
-                timer.stop();
-                std::cout << "    FQuickSort " << timer.getElapsed() << std::endl;
-                useVec(array.get(), currentSize);
-                const int idxType = 1;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }
-            /*{
-                srand48((long int)(currentSize));
-                createRandVec(array.get(), currentSize);
-                const NumType pivot = array[(idxLoop*currentSize/NbLoops)];
-                dtimer timer;
-                NewQuickSort<NumType,size_t>::Partition(array.get(), 0, currentSize-1, pivot);
-                timer.stop();
-                std::cout << "    bt " << timer.getElapsed() << std::endl;
-                const int idxType = 2;
-                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
-                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
-                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
-            }*/
-            {
-                srand48((long int)(idxLoop));
-                createRandVec(array.get(), currentSize);
-                const NumType pivot = array[(idxLoop*currentSize/NbLoops)];
-                dtimer timer;
                 NewQuickSort512<NumType,size_t>::Partition(array.get(), 0, currentSize-1, pivot);
                 timer.stop();
                 std::cout << "    bt512 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 3;
+                const int idxType = 1;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
@@ -10949,23 +17900,91 @@ void timePartitionAll(std::ostream& fres, const std::string prefix){
                 timer.stop();
                 std::cout << "    bt512v2 " << timer.getElapsed() << std::endl;
                 useVec(array.get(), currentSize);
-                const int idxType = 4;
+                const int idxType = 2;
                 allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
                 allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
                 allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
             }
         }
 
-        fres << prefix << currentSize << ",\"stdpartion\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
-        fres << prefix << currentSize << ",\"qspartition\"," << allTimes[1][0] << "," << allTimes[1][1] << "," << allTimes[1][2] << "\n";
-        //fres << prefix << currentSize << ",\"newpartition\"," << allTimes[2][0] << "," << allTimes[2][1] << "," << allTimes[2][2] << "\n";
-        fres << prefix << currentSize << ",\"newpartition512\"," << allTimes[3][0] << "," << allTimes[3][1] << "," << allTimes[3][2] << "\n";
-        fres << prefix << currentSize << ",\"newpartition512V2\"," << allTimes[4][0] << "," << allTimes[4][1] << "," << allTimes[4][2] << "\n";
-        fres.flush();
-    }
+        std::cout << currentSize << ",\"stdpartion\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
+        std::cout << currentSize << ",\"newpartition512\"," << allTimes[1][0] << "," << allTimes[1][1] << "," << allTimes[1][2] << "\n";
+        std::cout << currentSize << ",\"newpartition512V2\"," << allTimes[2][0] << "," << allTimes[2][1] << "," << allTimes[2][2] << "\n";
 
+        fres << currentSize << "\t"
+             << allTimes[0][2] << "\t" << allTimes[0][2]/(currentSize) << "\t"
+             << allTimes[1][2] << "\t" << allTimes[1][2]/(currentSize) << "\t"
+             << allTimes[2][2] << "\t" << allTimes[2][2]/(currentSize) << "\n";
+    }
 }
 
+template <class NumType>
+void timePartitionAll_pair(std::ostream& fres){
+    const size_t MaxSize = 1073741824;//10L*1024L*1024L*1024L;//10*1024*1024*1024;
+    const int NbLoops = 20;
+
+    std::unique_ptr<NumType[]> array(new NumType[MaxSize]);
+    std::unique_ptr<NumType[]> values(new NumType[MaxSize]());
+
+
+    std::unique_ptr<std::array<NumType,2>[]> arrayStruct(new std::array<NumType,2>[MaxSize]());
+
+    fres << "#size\tstdpart\tstdpartn\tbt512v2\tbt512v2n";
+    fres << "\n";
+
+    for(size_t currentSize = 64 ; currentSize <= MaxSize ; currentSize *= 8 ){
+        std::cout << "currentSize " << currentSize << std::endl;
+
+
+        double allTimes[3][3] = {{ std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
+                            { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. },
+                                 { std::numeric_limits<double>::max(), std::numeric_limits<double>::min(), 0. }};
+
+        for(int idxLoop = 0 ; idxLoop < NbLoops ; ++idxLoop){
+            std::cout << "  idxLoop " << idxLoop << std::endl;
+            {
+                srand48((long int)(idxLoop));
+                createRandVec(array.get(), currentSize);
+                for(int idxItem = 0 ; idxItem < currentSize ; ++idxItem){
+                    arrayStruct[idxItem][0] = array[idxItem];
+                }
+                const NumType pivot = array[(idxLoop*currentSize/NbLoops)];
+                dtimer timer;
+                std::partition(&arrayStruct[0], &arrayStruct[currentSize], [&](const std::array<NumType,2>& v){
+                    return v[0] < pivot;
+                });
+                timer.stop();
+                std::cout << "    std::partition " << timer.getElapsed() << std::endl;
+                useVec(array.get(), currentSize);
+                const int idxType = 0;
+                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
+                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
+                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
+            }
+            {
+                srand48((long int)(idxLoop));
+                createRandVec(array.get(), currentSize);
+                const NumType pivot = array[(idxLoop*currentSize/NbLoops)];
+                dtimer timer;
+                NewQuickSort512V5_pair<NumType,size_t>::Partition(array.get(), values.get(), 0, currentSize-1, pivot);
+                timer.stop();
+                std::cout << "    bt512v2 " << timer.getElapsed() << std::endl;
+                useVec(array.get(), currentSize);
+                const int idxType = 2;
+                allTimes[idxType][0] = std::min(allTimes[idxType][0], timer.getElapsed());
+                allTimes[idxType][1] = std::max(allTimes[idxType][1], timer.getElapsed());
+                allTimes[idxType][2] += timer.getElapsed()/double(NbLoops);
+            }
+        }
+
+        std::cout << currentSize << ",\"stdpartion\"," << allTimes[0][0] << "," << allTimes[0][1] << "," << allTimes[0][2] << "\n";
+        std::cout << currentSize << ",\"newpartition512V2\"," << allTimes[2][0] << "," << allTimes[2][1] << "," << allTimes[2][2] << "\n";
+
+        fres << currentSize << "\t"
+             << allTimes[0][2] << "\t" << allTimes[0][2]/(currentSize) << "\t"
+             << allTimes[2][2] << "\t" << allTimes[2][2]/(currentSize) << "\n";
+    }
+}
 
 
 template <class NumType>
@@ -13459,83 +20478,107 @@ void time16Vec(std::ostream& fres, const std::string prefix){
  */
 
 int main(){
+    #ifdef USE_IPP
+    IppStatus status=ippInit();
+    if( status != ippStsNoErr ) {
+            std::cout << "IppInit() Error:\n";
+            std::cout << ippGetStatusString(status) << std::endl;
+            return -1;
+    }
+    #endif
+
     const bool test = false;
     if(test){
         testAll();
     }
     else{
         {
-            std::ofstream fres("smallres.csv");
-            fres << "\"type\",\"size\",\"algo\",\"avgtime\"\n";
-
-            timeSmall<int>(fres, "\"int\",");
-            timeSmall<double>(fres, "\"double\",");
+            std::ofstream fres("smallres-int.data");
+            timeSmall<int>(fres);
         }
         {
-            std::ofstream fres("vec.csv");
-            fres << "\"type\",\"size\",\"algo\",\"avgtime\"\n";
-
-            time1Vec<int>(fres, "\"int\",");
-            time1Vec<double>(fres, "\"double\",");
-
-            time2Vec<int>(fres, "\"int\",");
-            time2Vec<double>(fres, "\"double\",");
-
-            time3Vec<int>(fres, "\"int\",");
-            time3Vec<double>(fres, "\"double\",");
-
-            time4Vec<int>(fres, "\"int\",");
-            time4Vec<double>(fres, "\"double\",");
-
-            time5Vec<int>(fres, "\"int\",");
-            time5Vec<double>(fres, "\"double\",");
-
-            time6Vec<int>(fres, "\"int\",");
-            time6Vec<double>(fres, "\"double\",");
-
-            time7Vec<int>(fres, "\"int\",");
-            time7Vec<double>(fres, "\"double\",");
-
-            time8Vec<int>(fres, "\"int\",");
-            time8Vec<double>(fres, "\"double\",");
-
-            time9Vec<int>(fres, "\"int\",");
-            time9Vec<double>(fres, "\"double\",");
-
-            time10Vec<int>(fres, "\"int\",");
-            time10Vec<double>(fres, "\"double\",");
-
-            time11Vec<int>(fres, "\"int\",");
-            time11Vec<double>(fres, "\"double\",");
-
-            time12Vec<int>(fres, "\"int\",");
-            time12Vec<double>(fres, "\"double\",");
-
-            time13Vec<int>(fres, "\"int\",");
-            time13Vec<double>(fres, "\"double\",");
-
-            time14Vec<int>(fres, "\"int\",");
-            time14Vec<double>(fres, "\"double\",");
-
-            time15Vec<int>(fres, "\"int\",");
-            time15Vec<double>(fres, "\"double\",");
-
-            time16Vec<int>(fres, "\"int\",");
-            time16Vec<double>(fres, "\"double\",");
+            std::ofstream fres("smallres-double.data");
+            timeSmall<double>(fres);
         }
         {
-            std::ofstream fres("partitions.csv");
-            fres << "\"type\",\"size\",\"algo\",\"mintime\",\"maxtime\",\"avgtime\"\n";
+            std::ofstream fres("smallres-pair-int.data");
+            timeSmall_pair<int>(fres);
+        }
+//        {
+//            std::ofstream fres("vec.data");
+//            fres << "\"type\",\"size\",\"algo\",\"avgtime\"\n";
 
-            timePartitionAll<int>(fres, "\"int\",");
-            timePartitionAll<double>(fres, "\"double\",");
+//            time1Vec<int>(fres, "\"int\",");
+//            time1Vec<double>(fres, "\"double\",");
+
+//            time2Vec<int>(fres, "\"int\",");
+//            time2Vec<double>(fres, "\"double\",");
+
+//            time3Vec<int>(fres, "\"int\",");
+//            time3Vec<double>(fres, "\"double\",");
+
+//            time4Vec<int>(fres, "\"int\",");
+//            time4Vec<double>(fres, "\"double\",");
+
+//            time5Vec<int>(fres, "\"int\",");
+//            time5Vec<double>(fres, "\"double\",");
+
+//            time6Vec<int>(fres, "\"int\",");
+//            time6Vec<double>(fres, "\"double\",");
+
+//            time7Vec<int>(fres, "\"int\",");
+//            time7Vec<double>(fres, "\"double\",");
+
+//            time8Vec<int>(fres, "\"int\",");
+//            time8Vec<double>(fres, "\"double\",");
+
+//            time9Vec<int>(fres, "\"int\",");
+//            time9Vec<double>(fres, "\"double\",");
+
+//            time10Vec<int>(fres, "\"int\",");
+//            time10Vec<double>(fres, "\"double\",");
+
+//            time11Vec<int>(fres, "\"int\",");
+//            time11Vec<double>(fres, "\"double\",");
+
+//            time12Vec<int>(fres, "\"int\",");
+//            time12Vec<double>(fres, "\"double\",");
+
+//            time13Vec<int>(fres, "\"int\",");
+//            time13Vec<double>(fres, "\"double\",");
+
+//            time14Vec<int>(fres, "\"int\",");
+//            time14Vec<double>(fres, "\"double\",");
+
+//            time15Vec<int>(fres, "\"int\",");
+//            time15Vec<double>(fres, "\"double\",");
+
+//            time16Vec<int>(fres, "\"int\",");
+//            time16Vec<double>(fres, "\"double\",");
+//        }
+        {
+            std::ofstream fres("partitions-int.data");
+            timePartitionAll<int>(fres);
         }
         {
-            std::ofstream fres("res.csv");
-            fres << "\"type\",\"size\",\"algo\",\"mintime\",\"maxtime\",\"avgtime\"\n";
-
-            timeAll<int>(fres, "\"int\",");
-            timeAll<double>(fres, "\"double\",");
+            std::ofstream fres("partitions-double.data");
+            timePartitionAll<double>(fres);
+        }
+        {
+            std::ofstream fres("partitions-pair-int.data");
+            timePartitionAll_pair<int>(fres);
+        }
+        {
+            std::ofstream fres("res-int.data");
+            timeAll<int>(fres);
+        }
+        {
+            std::ofstream fres("res-double.data");
+            timeAll<double>(fres);
+        }
+        {
+            std::ofstream fres("res-pair-int.data");
+            timeAll_pair<int>(fres);
         }
     }
 
