@@ -3,8 +3,7 @@ Berenger Bramas - MPCDF (berenger.bramas@mpcdf.mpg.de)
 ## AVX-512 sort functions
 
 This project is a small library that provides fast functions to sort array of int or double or int[2] using AVX-512.
-A paper describes the different strategies, it is currently under review, but drafts are available at https://arxiv.org/abs/1704.08579 for the KNL.
-An appendix that contains results for the Skylake architecture is available at http://berenger.eu/blog/wp-content/uploads/2017/06/avxsort.pdf or https://datashare.rzg.mpg.de/s/QCBTOdc5r0daqNt .
+A paper describes the different strategies, it is currently under review, but drafts are available here https://arxiv.org/abs/1704.08579 for the KNL (older report), and here http://dx.doi.org/10.13140/RG.2.2.25198.72002 for the Skylake.
 If you use this software, we would appreciate that you cite the AXIV document (and later the maybe published version).
 
 
