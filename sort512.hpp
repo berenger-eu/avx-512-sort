@@ -20,6 +20,8 @@
 /// - SKL
 /// Gcc : -mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq -fopenmp
 /// Intel : -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp
+///
+/// Or use "-march=native -mtune=native" if you are already on the right platform ("native can be replaced by "knl" or "skylake")
 //////////////////////////////////////////////////////////
 #ifndef SORT512_HPP
 #define SORT512_HPP
@@ -5953,6 +5955,12 @@ static void CoreSort(SortType array[], const IndexType left, const IndexType rig
     }
 }
 
+template <class SortType, class IndexType = size_t>
+static inline void Sort(SortType array[], const IndexType size){
+    CoreSort<SortType,IndexType>(array, 0, size-1);
+}
+
+
 #if defined(_OPENMP)
 
 template <class SortType, class IndexType = size_t>
@@ -5977,11 +5985,6 @@ static inline void CoreSortTask(SortType array[], const IndexType left, const In
             if(part && left < part-1)  CoreSort<SortType,IndexType>(array,left,part - 1);
         }
     }
-}
-
-template <class SortType, class IndexType = size_t>
-static inline void Sort(SortType array[], const IndexType size){
-    CoreSort<SortType,IndexType>(array, 0, size-1);
 }
 
 template <class SortType, class IndexType = size_t>
