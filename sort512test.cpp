@@ -14,6 +14,7 @@
 /// - SKL
 /// Gcc : g++ -DNDEBUG -O3 -funroll-loops -faggressive-loop-optimizations -std=c++11 -mavx512f -mavx512cd -mavx512vl -mavx512bw -mavx512dq -fopenmp sort512test.cpp -o sort512test.gcc.exe
 /// Intel : icpc -DNDEBUG -O3 -std=c++11 -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp sort512test.cpp -o sort512test.intel.exe
+/// You are in the branch with counters! You must use also use -std=c++17 (for inline static variables)
 //////////////////////////////////////////////////////////
 
 #include "sort512.hpp"
@@ -1603,50 +1604,132 @@ int main(){
     testPopcount();
 
     testSortVec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSortVec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort2Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort2Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort3Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort3Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort4Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort4Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort5Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort5Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort6Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort6Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort7Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort7Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort8Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort8Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
 
     testSort9Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort9Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort10Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort10Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort11Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort11Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort12Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort12Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort13Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort13Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort14Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort14Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort15Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort15Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort16Vec();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSort16Vec_pair();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
 
     testSmallVecSort<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSmallVecSort<double>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testSmallVecSort_pair<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
 
     testQs512<double>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testQs512<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testQs512_pair<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
 
     testPartition<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testPartition<double>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
     testPartition_pair<int>();
+    std::cout <<"Counters \n"; Sort512::PrintCounters(); Sort512::ResetCounters();
+    std::cout <<"Counters KV \n"; Sort512kv::PrintCounters(); Sort512kv::ResetCounters();
 
     if(test_res != 0){
         std::cout << "Test failed!" << std::endl;

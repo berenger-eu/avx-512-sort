@@ -22,6 +22,7 @@
 /// Intel : -xCOMMON-AVX512 -xCORE-AVX512 -qopenmp
 ///
 /// Or use "-march=native -mtune=native" if you are already on the right platform ("native can be replaced by "knl" or "skylake")
+/// You are in the branch with counters! You must use also use -std=c++17 (for inline static variables)
 //////////////////////////////////////////////////////////
 #ifndef SORT512KV_HPP
 #define SORT512LV_HPP
@@ -35,7 +36,40 @@
 #include <omp.h>
 #endif
 
+#include <iostream>
 namespace Sort512kv {
+    inline static long int globalCptMin = 0;
+    inline static long int globalCptMax = 0;
+    inline static long int globalCptMove = 0;
+    inline static long int globalCptPermute = 0;
+    inline static long int globalCptSet = 0;
+    inline static long int globalCptLoad = 0;
+    inline static long int globalCptStore = 0;
+    inline static long int globalCptCmp = 0;
+    inline static long int globalCptCompress = 0;
+inline void PrintCounters(){
+    std::cout << "Counter min: " <<  globalCptMin << "\n";
+    std::cout << "Counter max: " <<  globalCptMax  << "\n";
+    std::cout << "Counter mov: " <<  globalCptMove  << "\n";
+    std::cout << "Counter perm: " <<  globalCptPermute  <<  "\n";
+    std::cout << "Counter set: " <<  globalCptSet  <<  "\n";
+    std::cout << "Counter load: " <<  globalCptLoad  << "\n";
+    std::cout << "Counter store: " <<  globalCptStore  <<  "\n";
+    std::cout << "Counter cmp: " <<  globalCptCmp  <<  "\n";
+    std::cout << "Counter compress: " <<  globalCptCompress  << "\n";
+    std::cout << "  Total : " <<  globalCptMin + globalCptMax + globalCptMove + globalCptPermute +                                 globalCptSet + globalCptLoad + globalCptStore + globalCptCmp + globalCptCompress  <<  "\n";
+}
+inline void ResetCounters(){
+    globalCptMin = 0;
+    globalCptMax = 0;
+    globalCptMove = 0;
+    globalCptPermute = 0;
+    globalCptSet = 0;
+    globalCptLoad = 0;
+    globalCptStore = 0;
+    globalCptCmp = 0;
+    globalCptCompress = 0;
+}
 
 ///////////////////////////////////////////////////////////
 /// AVX Sort functions
@@ -44,6 +78,11 @@ namespace Sort512kv {
 /// Int
 
 inline void CoreSmallSort(__m512i& input, __m512i& values){
+    globalCptMin += 10;
+    globalCptMax += 10;
+    globalCptMove += 10;
+    globalCptPermute += 20;
+    globalCptSet += 10;
     {
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
@@ -177,6 +216,8 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
 }
 
 inline void CoreSmallSort(int* __restrict__ ptr1, int* __restrict__ ptrVal){
+    globalCptLoad += 2;
+    globalCptStore += 2;
     __m512i v = _mm512_loadu_si512(ptr1);
     __m512i v_val = _mm512_loadu_si512(ptrVal);
     CoreSmallSort(v, v_val);
@@ -188,6 +229,11 @@ inline void CoreSmallSort(int* __restrict__ ptr1, int* __restrict__ ptrVal){
 
 inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
                                  __m512i& input_val, __m512i& input2_val){
+    globalCptMin += 9;
+    globalCptMax += 9;
+    globalCptMove += 10;
+    globalCptPermute += 18;
+    globalCptSet += 5;
     {
         __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
                                               8, 9, 10, 11, 12, 13, 14, 15);
@@ -290,6 +336,11 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
 
 inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                  __m512i& input_val, __m512i& input2_val){
+    globalCptMin += 20;
+    globalCptMax += 20;
+    globalCptMove += 20;
+    globalCptPermute += 40;
+    globalCptSet += 10;
     {
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
@@ -495,6 +546,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
 
 
 inline void CoreSmallSort2(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 4;
+    globalCptStore += 4;
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr1+16);
     __m512i input1_val = _mm512_loadu_si512(values);
@@ -509,6 +562,11 @@ inline void CoreSmallSort2(int* __restrict__ ptr1, int* __restrict__ values ){
 
 inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val){
+    globalCptMin += 14;
+    globalCptMax += 14;
+    globalCptMove += 16;
+    globalCptPermute += 26;
+    globalCptSet += 5;
     CoreSmallSort2(input, input2, input_val, input2_val);
     CoreSmallSort(input3, input3_val);
     {
@@ -653,6 +711,8 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
 
 
 inline void CoreSmallSort3(int* __restrict__ ptr1, int* __restrict__ values){
+    globalCptLoad += 6;
+    globalCptStore += 6;
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr1+16);
     __m512i input3 = _mm512_loadu_si512(ptr1+32);
@@ -673,6 +733,11 @@ inline void CoreSmallSort3(int* __restrict__ ptr1, int* __restrict__ values){
 
 inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val){
+    globalCptMin += 20;
+    globalCptMax += 20;
+    globalCptMove += 24;
+    globalCptPermute += 36;
+    globalCptSet += 5;
     CoreSmallSort2(input, input2, input_val, input2_val);
     CoreSmallSort2(input3, input4, input3_val, input4_val);
     {
@@ -873,6 +938,8 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
 
 
 inline void CoreSmallSort4(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 8;
+    globalCptStore += 8;
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr1+16);
     __m512i input3 = _mm512_loadu_si512(ptr1+32);
@@ -896,6 +963,11 @@ inline void CoreSmallSort4(int* __restrict__ ptr1, int* __restrict__ values ){
 
 inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4, __m512i& input5,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val, __m512i& input5_val){
+    globalCptMin += 25;
+    globalCptMax += 25;
+    globalCptMove += 30;
+    globalCptPermute += 42;
+    globalCptSet += 5;
     CoreSmallSort4(input, input2, input3, input4,
                          input_val, input2_val, input3_val, input4_val);
     CoreSmallSort(input5, input5_val);
@@ -1140,6 +1212,8 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
 
 
 inline void CoreSmallSort5(int* __restrict__ ptr1, int* __restrict__ values){
+    globalCptLoad += 10;
+    globalCptStore += 10;
     __m512i input1 = _mm512_loadu_si512(ptr1);
     __m512i input2 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input3 = _mm512_loadu_si512(ptr1+2*16);
@@ -1170,6 +1244,11 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
                             __m512i& input5, __m512i& input6,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                                              __m512i& input5_val, __m512i& input6_val){
+    globalCptMin += 31;
+    globalCptMax += 31;
+    globalCptMove += 38;
+    globalCptPermute += 52;
+    globalCptSet += 5;
     CoreSmallSort4(input, input2, input3, input4,
                          input_val, input2_val, input3_val, input4_val);
     CoreSmallSort2(input5, input6, input5_val, input6_val);
@@ -1465,6 +1544,8 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
 
 
 inline void CoreSmallSort6(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 12;
+    globalCptStore += 12;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -1499,6 +1580,11 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
                             __m512i& input5, __m512i& input6, __m512i& input7,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                 __m512i& input5_val, __m512i& input6_val, __m512i& input7_val){
+    globalCptMin += 37;
+    globalCptMax += 37;
+    globalCptMove += 46;
+    globalCptPermute += 62;
+    globalCptSet += 5;
     CoreSmallSort4(input, input2, input3, input4,
                          input_val, input2_val, input3_val, input4_val);
     CoreSmallSort3(input5, input6, input7,
@@ -1850,6 +1936,8 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
 
 
 inline void CoreSmallSort7(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 14;
+    globalCptStore += 14;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -1888,6 +1976,11 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val){
+    globalCptMin += 44;
+    globalCptMax += 44;
+    globalCptMove += 56;
+    globalCptPermute += 72;
+    globalCptSet += 5;
     CoreSmallSort4(input, input2, input3, input4,
                          input_val, input2_val, input3_val, input4_val);
     CoreSmallSort4(input5, input6, input7, input8,
@@ -2305,6 +2398,8 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
 }
 
 inline void CoreSmallSort8(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 16;
+    globalCptStore += 16;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -2344,6 +2439,11 @@ inline void CoreSmallSort8(int* __restrict__ ptr1, int* __restrict__ values ){
 
 
 inline void CoreSmallEnd1(__m512i& input, __m512i& values){
+    globalCptMin += 4;
+    globalCptMax += 4;
+    globalCptMove += 4;
+    globalCptPermute += 8;
+    globalCptSet += 4;
     {
         __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
                                               15, 14, 13, 12, 11, 10, 9, 8);
@@ -2400,6 +2500,11 @@ inline void CoreSmallEnd1(__m512i& input, __m512i& values){
 
 inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                    __m512i& input_val, __m512i& input2_val){
+    globalCptMin += 9;
+    globalCptMax += 9;
+    globalCptMove += 10;
+    globalCptPermute += 16;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
@@ -2497,6 +2602,11 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
 
 inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val){
+    globalCptMin += 14;
+    globalCptMax += 14;
+    globalCptMove += 16;
+    globalCptPermute += 24;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
@@ -2635,6 +2745,11 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
 
 inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m512i& input4,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val){
+    globalCptMin += 20;
+    globalCptMax += 20;
+    globalCptMove += 24;
+    globalCptPermute += 32;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
@@ -2829,6 +2944,11 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
                             __m512i& input5,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                    __m512i& input5_val){
+    globalCptMin += 25;
+    globalCptMax += 25;
+    globalCptMove += 30;
+    globalCptPermute += 40;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
@@ -3064,6 +3184,11 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
                             __m512i& input5, __m512i& input6,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                    __m512i& input5_val, __m512i& input6_val){
+    globalCptMin += 31;
+    globalCptMax += 31;
+    globalCptMove += 38;
+    globalCptPermute += 48;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
@@ -3355,6 +3480,11 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
                             __m512i& input5, __m512i& input6, __m512i& input7,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                    __m512i& input5_val, __m512i& input6_val, __m512i& input7_val){
+    globalCptMin += 38;
+    globalCptMax += 38;
+    globalCptMove += 48;
+    globalCptPermute += 56;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
@@ -3713,6 +3843,11 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
                             __m512i& input5, __m512i& input6, __m512i& input7, __m512i& input8,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                    __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val){
+    globalCptMin += 45;
+    globalCptMax += 45;
+    globalCptMove += 57;
+    globalCptPermute += 64;
+    globalCptSet += 4;
     {
         __m512i inputCopy = input;
         __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
@@ -4138,6 +4273,11 @@ inline void CoreSmallSort9(__m512i& input, __m512i& input2, __m512i& input3, __m
                                  __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                  __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                                  __m512i& input9_val){
+    globalCptMin += 1;
+    globalCptMax += 1;
+    globalCptMove += 2;
+    globalCptPermute += 2;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                          input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort(input9, input9_val);
@@ -4166,6 +4306,8 @@ inline void CoreSmallSort9(__m512i& input, __m512i& input2, __m512i& input3, __m
 
 
 inline void CoreSmallSort9(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 18;
+    globalCptStore += 18;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4213,6 +4355,11 @@ inline void CoreSmallSort10(__m512i& input, __m512i& input2, __m512i& input3, __
                              __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                              __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                              __m512i& input9_val, __m512i& input10_val){
+    globalCptMin += 2;
+    globalCptMax += 2;
+    globalCptMove += 4;
+    globalCptPermute += 4;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                          input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort2(input9, input10, input9_val, input10_val);
@@ -4255,6 +4402,8 @@ inline void CoreSmallSort10(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort10(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 20;
+    globalCptStore += 20;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4307,6 +4456,11 @@ inline void CoreSmallSort11(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val,
                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val){
+    globalCptMin += 3;
+    globalCptMax += 3;
+    globalCptMove += 6;
+    globalCptPermute += 6;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort3(input9, input10, input11,
@@ -4363,6 +4517,8 @@ inline void CoreSmallSort11(__m512i& input, __m512i& input2, __m512i& input3, __
 }
 
 inline void CoreSmallSort11(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 22;
+    globalCptStore += 22;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4418,6 +4574,11 @@ inline void CoreSmallSort12(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
                                   __m512i& input12_val){
+    globalCptMin += 4;
+    globalCptMax += 4;
+    globalCptMove += 8;
+    globalCptPermute += 8;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort4(input9, input10, input11, input12,
@@ -4486,6 +4647,8 @@ inline void CoreSmallSort12(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort12(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 24;
+    globalCptStore += 24;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4548,6 +4711,11 @@ inline void CoreSmallSort13(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
                                   __m512i& input12_val, __m512i& input13_val){
+    globalCptMin += 5;
+    globalCptMax += 5;
+    globalCptMove += 10;
+    globalCptPermute += 10;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort5(input9, input10, input11, input12, input13,
@@ -4629,6 +4797,8 @@ inline void CoreSmallSort13(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort13(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 26;
+    globalCptStore += 26;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4695,6 +4865,11 @@ inline void CoreSmallSort14(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val,
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
                                   __m512i& input12_val, __m512i& input13_val, __m512i& input14_val){
+    globalCptMin += 6;
+    globalCptMax += 6;
+    globalCptMove += 12;
+    globalCptPermute += 12;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort6(input9, input10, input11, input12, input13, input14,
@@ -4789,6 +4964,8 @@ inline void CoreSmallSort14(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort14(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 28;
+    globalCptStore += 28;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -4859,6 +5036,11 @@ inline void CoreSmallSort15(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
                                   __m512i& input12_val, __m512i& input13_val, __m512i& input14_val,
                                   __m512i& input15_val){
+    globalCptMin += 7;
+    globalCptMax += 7;
+    globalCptMove += 14;
+    globalCptPermute += 14;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort7(input9, input10, input11, input12, input13, input14, input15,
@@ -4966,6 +5148,8 @@ inline void CoreSmallSort15(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort15(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 30;
+    globalCptStore += 30;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -5041,6 +5225,11 @@ inline void CoreSmallSort16(__m512i& input, __m512i& input2, __m512i& input3, __
                                   __m512i& input9_val, __m512i& input10_val, __m512i& input11_val ,
                                   __m512i& input12_val, __m512i& input13_val, __m512i& input14_val,
                                   __m512i& input15_val,__m512i& input16_val){
+    globalCptMin += 8;
+    globalCptMax += 8;
+    globalCptMove += 16;
+    globalCptPermute += 16;
+    globalCptSet += 1;
     CoreSmallSort8(input, input2, input3, input4, input5, input6, input7, input8,
                     input_val, input2_val, input3_val, input4_val, input5_val, input6_val, input7_val, input8_val);
     CoreSmallSort8(input9, input10, input11, input12, input13, input14, input15, input16,
@@ -5162,6 +5351,8 @@ inline void CoreSmallSort16(__m512i& input, __m512i& input2, __m512i& input3, __
 
 
 inline void CoreSmallSort16(int* __restrict__ ptr1, int* __restrict__ values ){
+    globalCptLoad += 32;
+    globalCptStore += 32;
     __m512i input0 = _mm512_loadu_si512(ptr1+0*16);
     __m512i input1 = _mm512_loadu_si512(ptr1+1*16);
     __m512i input2 = _mm512_loadu_si512(ptr1+2*16);
@@ -5233,6 +5424,10 @@ inline void CoreSmallSort16(int* __restrict__ ptr1, int* __restrict__ values ){
 
 
 inline void SmallSort16V(int* __restrict__ ptr, int* __restrict__ values, const size_t length){
+    globalCptSet += 32;
+    globalCptLoad += 272;
+    globalCptStore += 240;
+    globalCptCompress += 32;
     // length is limited to 4 times size of a vec
     const int nbValuesInVec = 16;
     const int nbVecs = (length+nbValuesInVec-1)/nbValuesInVec;
@@ -5959,6 +6154,10 @@ inline int popcount(__mmask16 mask){
 template <class IndexType>
 static inline IndexType Partition512(int array[], int values[], IndexType left, IndexType right,
                                          const int pivot){
+    globalCptSet += 1;
+    globalCptLoad += 10;
+    globalCptCmp += 4;
+    globalCptCompress += 16;
     const IndexType S = 16;//(512/8)/sizeof(int);
 
     if(right-left+1 < 2*S){
@@ -6163,6 +6362,7 @@ static inline void CoreSortTaskPartition(SortType array[], SortType values[], co
 
 template <class SortType, class IndexType = size_t>
 static inline void SortOmpPartition(SortType array[], SortType values[], const IndexType size){
+    globalCptMax += 1;
     // const int nbTasksRequiere = (omp_get_max_threads() * 5);
     // int deep = 0;
     // while( (1 << deep) < nbTasksRequiere ) deep += 1;

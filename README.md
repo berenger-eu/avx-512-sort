@@ -48,3 +48,17 @@ Anyone can test the code without having a KNL by using the Intel SDE
 ## Knowing more about the number of instructions
 
 Please checkout the branch "feature/counters" to have access to counters.
+
+You are actually in, if you want to get performance then checkout the master branch instead.
+
+You must use also use `-std=c++17` (for inline static variables)
+
+You can access the following functions to print and reset the counters:
+```
+Sort512::PrintCounters();
+Sort512::ResetCounters();
+// and
+
+Sort512kv::PrintCounters();
+Sort512kv::ResetCounters();
+```
