@@ -1,4 +1,4 @@
-Berenger Bramas - MPCDF (berenger.bramas@mpcdf.mpg.de)
+Berenger Bramas - Inria - berenger.bramas@inria.fr
 
 ## AVX-512 sort functions
 
