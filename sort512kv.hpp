@@ -6138,7 +6138,7 @@ static inline void Sort(SortType array[], SortType values[], const IndexType siz
 #if defined(_OPENMP)
 
 template <class SortType, class IndexType = size_t>
-static inline void CoreSortTask(SortType array[], SortType values[], const IndexType left, const IndexType right, const int deep){
+static inline void CoreSortTaskPartition(SortType array[], SortType values[], const IndexType left, const IndexType right, const int deep){
     static const int SortLimite = 16*64/sizeof(SortType);
     if(right-left < SortLimite){
         SmallSort16V(array+left, values+left, right-left+1);
@@ -6149,10 +6149,10 @@ static inline void CoreSortTask(SortType array[], SortType values[], const Index
             // default(none) has been removed for clang compatibility
             if(part+1 < right){
                 #pragma omp task default(shared) firstprivate(array, values, part, right, deep)
-                CoreSortTask<SortType,IndexType>(array,values, part+1,right, deep - 1);
+                CoreSortTaskPartition<SortType,IndexType>(array,values, part+1,right, deep - 1);
             }
             // not task needed, let the current thread compute it
-            if(part && left < part-1)  CoreSortTask<SortType,IndexType>(array,values, left,part - 1, deep - 1);
+            if(part && left < part-1)  CoreSortTaskPartition<SortType,IndexType>(array,values, left,part - 1, deep - 1);
         }
         else {
             if(part+1 < right) CoreSort<SortType,IndexType>(array,values, part+1,right);
@@ -6162,7 +6162,7 @@ static inline void CoreSortTask(SortType array[], SortType values[], const Index
 }
 
 template <class SortType, class IndexType = size_t>
-static inline void SortOmp(SortType array[], SortType values[], const IndexType size){
+static inline void SortOmpPartition(SortType array[], SortType values[], const IndexType size){
     // const int nbTasksRequiere = (omp_get_max_threads() * 5);
     // int deep = 0;
     // while( (1 << deep) < nbTasksRequiere ) deep += 1;
@@ -6173,7 +6173,7 @@ static inline void SortOmp(SortType array[], SortType values[], const IndexType 
     {
 #pragma omp master
         {
-            CoreSortTask<SortType,IndexType>(array, values, 0, size - 1 , deep);
+            CoreSortTaskPartition<SortType,IndexType>(array, values, 0, size - 1 , deep);
         }
     }
 }
