@@ -1379,7 +1379,28 @@ void testQs512(){
         std::cout << "   " << idx << std::endl;
         std::unique_ptr<NumType[]> array(new NumType[idx]);
         createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
-        Sort512::SortOmp<NumType,size_t>(array.get(), idx);
+        Sort512::SortOmpPartition<NumType,size_t>(array.get(), idx);
+        assertNotSorted(array.get(), idx, "");
+    }
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        Sort512::SortOmpMerge<NumType,size_t>(array.get(), idx);
+        assertNotSorted(array.get(), idx, "");
+    }
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        Sort512::SortOmpMergeDeps<NumType,size_t>(array.get(), idx);
+        assertNotSorted(array.get(), idx, "");
+    }
+    for(size_t idx = 1 ; idx <= (1<<10); idx *= 2){
+        std::cout << "   " << idx << std::endl;
+        std::unique_ptr<NumType[]> array(new NumType[idx]);
+        createRandVec(array.get(), idx); Checker<NumType> checker(array.get(), array.get(), idx);
+        Sort512::SortOmpParMerge<NumType,size_t>(array.get(), idx);
         assertNotSorted(array.get(), idx, "");
     }
 #endif
@@ -1414,7 +1435,7 @@ void testQs512_pair(){
         for(size_t idxval = 0 ; idxval < idx ; ++idxval){
             values[idxval] = array[idxval]*100+1;
         }
-        Sort512kv::SortOmp<NumType,size_t>(array.get(), values.get(), idx);
+        Sort512kv::SortOmpPartition<NumType,size_t>(array.get(), values.get(), idx);
         assertNotSorted(array.get(), idx, "");
         for(size_t idxval = 0 ; idxval < idx ; ++idxval){
             if(values[idxval] != array[idxval]*100+1){

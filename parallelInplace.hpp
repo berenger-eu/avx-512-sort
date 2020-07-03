@@ -13,18 +13,11 @@
 #ifndef PARALLELINPLACE_HPP
 #define PARALLELINPLACE_HPP
 
-#include <cstdio>
-#include <cstdlib>
-#include <unistd.h>
 #include <cstring>
-#include <sys/time.h>
-#include <omp.h>
 #include <utility>
 #include <algorithm>
 #include <cassert>
-#include <array>
 #include <memory>
-#include <iostream>// TODO
 
 #include <omp.h>
 
@@ -154,7 +147,7 @@ struct WorkingInterval{
 template <class NumType>
 inline void parallelMergeInPlaceCore(NumType array[], int currentStart, int currentMiddle, int currentEnd,
                                     int level, const int depthLimite,
-                                    WorkingInterval<NumType> intervals[], int barrier[]){
+                                    volatile WorkingInterval<NumType> intervals[], volatile int barrier[]){
 
     assert(0 <= currentStart);
     assert(currentStart <= currentMiddle);
@@ -175,11 +168,8 @@ inline void parallelMergeInPlaceCore(NumType array[], int currentStart, int curr
 
             const int targetThread = (1 << (depthLimite - level - 1)) + omp_get_thread_num();
 
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] Ok for " << targetThread << std::endl;// TODO
-
             // Should be #pragma omp atomic write
-            intervals[targetThread] = WorkingInterval<NumType>{array,
+            ((WorkingInterval<NumType>*)intervals)[targetThread] = WorkingInterval<NumType>{array,
                                      currentStart+middleA+middleB,
                                      currentStart+middleA+middleB+sizeRestA,
                                      currentEnd,
@@ -203,11 +193,8 @@ std::cout << omp_get_thread_num() << "] Ok for " << targetThread << std::endl;//
     while(level != depthLimite){
         const int targetThread = (1 << (depthLimite - level - 1)) + omp_get_thread_num();
 
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] Ok no work for " << targetThread << std::endl;// TODO
-
         // Should be #pragma omp atomic write
-        intervals[targetThread] = WorkingInterval<NumType>{array,
+        ((WorkingInterval<NumType>*)intervals)[targetThread] = WorkingInterval<NumType>{array,
                                  currentEnd,
                                  currentEnd,
                                  currentEnd,
@@ -222,13 +209,13 @@ std::cout << omp_get_thread_num() << "] Ok no work for " << targetThread << std:
 template <class NumType>
 inline void parallelMergeInPlace(NumType array[], const int sizeArray, int centerPosition,
                                  const long int numThreadsInvolved, const long int firstThread,
-                                 WorkingInterval<NumType> intervals[], int barrier[]){
+                                 volatile WorkingInterval<NumType> intervals[], volatile int barrier[]){
     const int numThread = omp_get_thread_num();
 
     for(int idxThread = 0 ; idxThread < numThreadsInvolved ; ++idxThread){
         if(idxThread + firstThread == numThread){
 #pragma omp atomic write
-            barrier[idxThread + firstThread] = -1;
+            barrier[numThread] = -1;
         }
         while(true){
             int dataAreReady;
@@ -242,14 +229,10 @@ inline void parallelMergeInPlace(NumType array[], const int sizeArray, int cente
 
     // Already in good shape
     if(centerPosition == 0 || centerPosition == sizeArray || array[centerPosition-1] <= array[centerPosition]){
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] nothing to do array " << array << " centerPosition " << centerPosition << " " <<
-          array[centerPosition-1] << " " << array[centerPosition] << std::endl;// TODO
-
         for(int idxThread = 0 ; idxThread < numThreadsInvolved ; ++idxThread){
             if(idxThread + firstThread == numThread){
         #pragma omp atomic write
-                barrier[idxThread + firstThread] = 0;
+                barrier[numThread] = 0;
             }
             while(true){
                 int dataAreReady;
@@ -264,14 +247,10 @@ std::cout << omp_get_thread_num() << "] nothing to do array " << array << " cent
         return;
     }
 
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] work to do array " << array << " centerPosition " << centerPosition << " " <<
-          array[centerPosition-1] << " " << array[centerPosition] << std::endl;// TODO
-
     for(int idxThread = 0 ; idxThread < numThreadsInvolved ; ++idxThread){
         if(idxThread + firstThread == numThread){
     #pragma omp atomic write
-            barrier[idxThread + firstThread] = -2;
+            barrier[numThread] = -2;
         }
         while(true){
             int dataAreReady;
@@ -284,8 +263,6 @@ std::cout << omp_get_thread_num() << "] work to do array " << array << " centerP
     }
 
     if(numThread == firstThread){
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] LEAD" << std::endl;// TODO
         const int depthLimite = ffs(numThreadsInvolved) - 1;
 #pragma omp atomic write
         barrier[numThread] = 1;
@@ -294,9 +271,6 @@ std::cout << omp_get_thread_num() << "] LEAD" << std::endl;// TODO
                                           intervals, barrier);
     }
     else{
-//#pragma omp critical(out)
-//std::cout << omp_get_thread_num() << "] wait my turn" << std::endl;// TODO
-
         while(true){
             int myDataAreReady;
 #pragma omp atomic read
@@ -305,21 +279,6 @@ std::cout << omp_get_thread_num() << "] LEAD" << std::endl;// TODO
                 break;
             }
         }
-
-        #pragma omp critical(out)
-        std::cout << omp_get_thread_num() << "] GOO" << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].array = " << intervals[numThread].array << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].currentStart = " << intervals[numThread].currentStart << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].currentMiddle = " << intervals[numThread].currentMiddle << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].currentEnd = " << intervals[numThread].currentEnd << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].level = " << intervals[numThread].level << std::endl;// TODO
-//        #pragma omp critical(out)
-//        std::cout << omp_get_thread_num() << "] intervals[numThread].depthLimite = " << intervals[numThread].depthLimite << std::endl;// TODO
 
         parallelMergeInPlaceCore<NumType>(intervals[numThread].array,
                                           intervals[numThread].currentStart,
@@ -330,13 +289,10 @@ std::cout << omp_get_thread_num() << "] LEAD" << std::endl;// TODO
                                           intervals, barrier);
     }
 
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] done wait other" << std::endl;// TODO
-
     for(int idxThread = 0 ; idxThread < numThreadsInvolved ; ++idxThread){
         if(idxThread + firstThread == numThread){
 #pragma omp atomic write
-            barrier[idxThread + firstThread] = 0;
+            barrier[numThread] = 0;
         }
         while(true){
             int dataAreReady;
@@ -347,9 +303,6 @@ std::cout << omp_get_thread_num() << "] done wait other" << std::endl;// TODO
             }
         }
     }
-
-#pragma omp critical(out)
-std::cout << omp_get_thread_num() << "] leave" << std::endl;// TODO
 }
 
 }
