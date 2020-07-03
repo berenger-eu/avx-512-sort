@@ -31,9 +31,11 @@
 #include <cfloat>
 #include <algorithm>
 #include <cassert>
+#include <iostream>// TODO
 
 #if defined(_OPENMP)
 #include <omp.h>
+#include "parallelInplace.hpp"
 #endif
 
 namespace Sort512 {
@@ -6025,17 +6027,16 @@ static inline void SortOmpMerge(SortType array[], const IndexType size){
             mydone = 1;
         }
 
-        int level = 0;
-        while(!(omp_get_thread_num() & (1<<level)) && (1<<level) < omp_get_num_threads()){
+        int level = 1;
+        while(!(omp_get_thread_num() & (1<<(level-1))) && (1<<level) <= omp_get_num_threads()){
             while(true){
                 int otherIsDone;
                 #pragma omp atomic read
-                otherIsDone = done[level][(omp_get_thread_num()>>level)+1];
+                otherIsDone = done[level-1][(omp_get_thread_num()>>(level-1))+1];
                 if(otherIsDone){
                     break;
                 }
             }
-            level += 1;
 
             const IndexType nbOriginalPartsToMerge = (1 << level);
             const IndexType first = std::min(size, (omp_get_thread_num())*chunk);
@@ -6051,6 +6052,8 @@ static inline void SortOmpMerge(SortType array[], const IndexType size){
                 #pragma omp atomic write
                 mydone = 1;
             }
+
+            level += 1;
         }
     }
 }
@@ -6076,10 +6079,8 @@ static inline void SortOmpMergeDeps(SortType array[], const IndexType size){
                 }
             }
 
-            int level = 0;
-            while((1 << level) < nbParts){
-                level += 1;
-
+            int level = 1;
+            while((1 << level) <= nbParts){
                 const IndexType nbPartsAtLevel = nbParts/(1<<level);
                 const IndexType nbOriginalPartsToMerge = (1 << level);
 
@@ -6093,6 +6094,7 @@ static inline void SortOmpMergeDeps(SortType array[], const IndexType size){
                                        &array[middle],
                                        &array[last]);
                 }
+                level += 1;
             }
 
 #pragma omp taskwait
@@ -6102,9 +6104,17 @@ static inline void SortOmpMergeDeps(SortType array[], const IndexType size){
 
 template <class SortType, class IndexType = size_t>
 static inline void SortOmpParMerge(SortType array[], const IndexType size){
+    if(size < omp_get_max_threads()){
+        CoreSort<SortType,IndexType>(array,0,size-1);
+        return;
+    }
+
     const long int MAX_THREADS = 128;
     const long int LOG2_MAX_THREADS = 7;
     int done[LOG2_MAX_THREADS][MAX_THREADS] = {0};
+
+    ParallelInplace::WorkingInterval<SortType> intervals[MAX_THREADS] = {0};
+    int barrier[MAX_THREADS] = {0};
 
     assert(((omp_get_num_threads()-1) & omp_get_num_threads()) == 0); // Must be power of 2
 
@@ -6123,32 +6133,62 @@ static inline void SortOmpParMerge(SortType array[], const IndexType size){
             mydone = 1;
         }
 
-        int level = 0;
-        while(!(omp_get_thread_num() & (1<<level)) && (1<<level) < omp_get_num_threads()){
-            while(true){
-                int otherIsDone;
-                #pragma omp atomic read
-                otherIsDone = done[level][(omp_get_thread_num()>>level)+1];
-                if(otherIsDone){
-                    break;
+        int level = 1;
+        while((1<<level) <= omp_get_num_threads()){
+            const bool threadInCharge = (((omp_get_thread_num()>>level)<<level) == omp_get_thread_num());
+            const IndexType firstThread = ((omp_get_thread_num() >> level) << level);
+            assert(threadInCharge == false || firstThread == omp_get_thread_num());
+
+            {
+                const IndexType firstThreadPreviousLevel = ((omp_get_thread_num() >> (level-1)) << (level-1));
+                const IndexType previousPartToWait = (firstThreadPreviousLevel >> (level-1)) +
+                        (firstThread == firstThreadPreviousLevel ? 1 : -1);
+
+                #pragma omp critical(out)
+                std::cout << omp_get_thread_num() << "] level " << level << " firstThread " << firstThread << " firstThreadPreviousLevel = " << firstThreadPreviousLevel
+                          << " previousPartToWait " << previousPartToWait << std::endl;// TODO
+
+                while(true){
+                    int otherIsDone;
+                    #pragma omp atomic read
+                    otherIsDone = done[level-1][previousPartToWait];
+                    if(otherIsDone){
+                        break;
+                    }
                 }
             }
-            level += 1;
 
             const IndexType nbOriginalPartsToMerge = (1 << level);
-            const IndexType first = std::min(size, (omp_get_thread_num())*chunk);
+            const IndexType numThreadsInvolved = nbOriginalPartsToMerge;
+            const IndexType first = std::min(size, (firstThread)*chunk);
             const IndexType middle = std::min(size, first + (nbOriginalPartsToMerge/2)*chunk);
             const IndexType last = std::min(size, first + nbOriginalPartsToMerge*chunk);
 
-            std::inplace_merge(&array[first],
-                               &array[middle],
-                               &array[last]);
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] nbOriginalPartsToMerge = " << nbOriginalPartsToMerge << std::endl;// TODO
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] numThreadsInvolved = " << numThreadsInvolved << std::endl;// TODO
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] firstThread = " << firstThread << std::endl;// TODO
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] first = " << first << std::endl;// TODO
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] middle = " << middle << std::endl;// TODO
+//            #pragma omp critical(out)
+//            std::cout << omp_get_thread_num() << "] last = " << last << std::endl;// TODO
 
-            {
+            ParallelInplace::parallelMergeInPlace(&array[first], last-first, middle-first,
+                                 numThreadsInvolved, firstThread,
+                                 intervals, barrier);
+
+            if(threadInCharge){
+#pragma omp critical(out)
+std::cout << omp_get_thread_num() << "] level " << level << " set " << (omp_get_thread_num()>>level) << std::endl;// TODO
                 int& mydone = done[level][(omp_get_thread_num()>>level)];
                 #pragma omp atomic write
                 mydone = 1;
             }
+            level += 1;
         }
     }
 }
