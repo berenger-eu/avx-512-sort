@@ -17,6 +17,8 @@ wherease the current master branch provides an header only library:
 
 Note that the official repository is https://gitlab.inria.fr/bramas/avx-512-sort
 
+There is a version of this algorithm for ARM SVE here https://gitlab.inria.fr/bramas/arm-sve-sort
+
 ##  Functions
 - Sort512::Sort(); to sort an array
 - Sort512::SortOmp(); to sort in parallel (need openmp)
