@@ -48,7 +48,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
 
@@ -61,7 +61,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(12, 13, 14, 15, 8, 9, 10, 11,
                                               4, 5, 6, 7, 0, 1, 2, 3);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
 
@@ -74,7 +74,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
 
@@ -87,7 +87,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(8, 9, 10, 11, 12, 13, 14, 15,
                                               0, 1, 2, 3, 4, 5, 6, 7);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
 
@@ -100,7 +100,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
 
@@ -113,7 +113,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
 
@@ -126,7 +126,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
                                               8, 9, 10, 11, 12, 13, 14, 15);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
 
@@ -139,7 +139,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
                                               3, 2, 1, 0, 7, 6, 5, 4);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
 
@@ -152,7 +152,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
 
@@ -165,7 +165,7 @@ inline void CoreSmallSort(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input  = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
 
@@ -192,7 +192,7 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
         __m512i idxNoNeigh = _mm512_set_epi32(0, 1, 2, 3, 4, 5, 6, 7,
                                               8, 9, 10, 11, 12, 13, 14, 15);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i tmp_input = _mm512_min_epi32(input2, permNeigh);
+        __m512i tmp_input = _mm512_min_epi32( permNeigh,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, permNeigh);
 
         __m512i input_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input_val);
@@ -209,8 +209,8 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
                                               15, 14, 13, 12, 11, 10, 9, 8);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
          __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
@@ -229,8 +229,8 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
                                               3, 2, 1, 0, 7, 6, 5, 4);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
          __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
@@ -249,8 +249,8 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
          __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
@@ -269,8 +269,8 @@ inline void CoreExchangeSort2V(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
          __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -295,8 +295,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -315,8 +315,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               4, 5, 6, 7, 0, 1, 2, 3);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
@@ -335,8 +335,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -355,8 +355,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               0, 1, 2, 3, 4, 5, 6, 7);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
@@ -375,8 +375,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
@@ -395,8 +395,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -415,8 +415,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               8, 9, 10, 11, 12, 13, 14, 15);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
@@ -435,8 +435,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               3, 2, 1, 0, 7, 6, 5, 4);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
@@ -455,8 +455,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
@@ -475,8 +475,8 @@ inline void CoreSmallSort2(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -516,7 +516,7 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
                                               8, 9, 10, 11, 12, 13, 14, 15);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i tmp_input3 = _mm512_max_epi32(input2, permNeigh);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh,input2);
 
         __m512i input3_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input3_val);
         input3_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input3, permNeigh, _MM_CMPINT_EQ ),
@@ -529,7 +529,7 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
 
         __m512i input_val_copy = input_val;
@@ -547,9 +547,9 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -574,9 +574,9 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -601,9 +601,9 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -628,9 +628,9 @@ inline void CoreSmallSort3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -682,10 +682,10 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
 
         __m512i tmp_input4 = _mm512_max_epi32(input, permNeigh4);
-        __m512i tmp_input = _mm512_min_epi32(input, permNeigh4);
+        __m512i tmp_input = _mm512_min_epi32( permNeigh4,input);
 
         __m512i tmp_input3 = _mm512_max_epi32(input2, permNeigh3);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh3);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh3,input2);
 
 
         __m512i input4_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input4_val);
@@ -707,7 +707,7 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
 
         __m512i input_val_copy = input_val;
@@ -721,7 +721,7 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
 
         __m512i input3_val_copy = input3_val;
@@ -740,10 +740,10 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -774,10 +774,10 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -808,10 +808,10 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -842,10 +842,10 @@ inline void CoreSmallSort4(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -905,7 +905,7 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
 
         __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh5,input4);
 
         __m512i input5_val_copy = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
         input5_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input5, permNeigh5, _MM_CMPINT_EQ ),
@@ -918,7 +918,7 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
 
         __m512i input_val_copy = input_val;
@@ -932,7 +932,7 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
 
         __m512i input2_val_copy = input2_val;
@@ -946,7 +946,7 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
 
         __m512i input_val_copy = input_val;
@@ -960,7 +960,7 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
 
         __m512i input3_val_copy = input3_val;
@@ -980,11 +980,11 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1021,11 +1021,11 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1062,11 +1062,11 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1103,11 +1103,11 @@ inline void CoreSmallSort5(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1180,10 +1180,10 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
 
         __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh5,input4);
 
         __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh6,input3);
 
 
         __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
@@ -1206,7 +1206,7 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1219,7 +1219,7 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -1232,7 +1232,7 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1245,7 +1245,7 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -1258,7 +1258,7 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -1278,12 +1278,12 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1326,12 +1326,12 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1374,12 +1374,12 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1422,12 +1422,12 @@ inline void CoreSmallSort6(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1511,13 +1511,13 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
 
         __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh5,input4);
 
         __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh6,input3);
 
         __m512i tmp_input7 = _mm512_max_epi32(input2, permNeigh7);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh7);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh7,input2);
 
 
         __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
@@ -1550,7 +1550,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1563,7 +1563,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -1576,7 +1576,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1589,7 +1589,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -1602,7 +1602,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -1615,7 +1615,7 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -1636,13 +1636,13 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1691,13 +1691,13 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1746,13 +1746,13 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1801,13 +1801,13 @@ inline void CoreSmallSort7(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -1901,16 +1901,16 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
 
         __m512i tmp_input5 = _mm512_max_epi32(input4, permNeigh5);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh5);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh5,input4);
 
         __m512i tmp_input6 = _mm512_max_epi32(input3, permNeigh6);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh6);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh6,input3);
 
         __m512i tmp_input7 = _mm512_max_epi32(input2, permNeigh7);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh7);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh7,input2);
 
         __m512i tmp_input8 = _mm512_max_epi32(input, permNeigh8);
-        __m512i tmp_input = _mm512_min_epi32(input, permNeigh8);
+        __m512i tmp_input = _mm512_min_epi32( permNeigh8,input);
 
 
         __m512i input5_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input5_val);
@@ -1952,7 +1952,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1965,7 +1965,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -1978,7 +1978,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -1991,7 +1991,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -2004,7 +2004,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -2017,7 +2017,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input6;
-        __m512i tmp_input6 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input6 = _mm512_min_epi32( inputCopy,input8);
         __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
         __m512i input6_val_copy = input6_val;
         input6_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input6, inputCopy, _MM_CMPINT_EQ ),
@@ -2030,7 +2030,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -2043,7 +2043,7 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
     }
     {
         __m512i inputCopy = input7;
-        __m512i tmp_input7 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input7 = _mm512_min_epi32( inputCopy,input8);
         __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
         __m512i input7_val_copy = input7_val;
         input7_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input7, inputCopy, _MM_CMPINT_EQ ),
@@ -2065,14 +2065,14 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2127,14 +2127,14 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2189,14 +2189,14 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2251,14 +2251,14 @@ inline void CoreSmallSort8(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2348,7 +2348,7 @@ inline void CoreSmallEnd1(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(7, 6, 5, 4, 3, 2, 1, 0,
                                               15, 14, 13, 12, 11, 10, 9, 8);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
 
@@ -2361,7 +2361,7 @@ inline void CoreSmallEnd1(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32( 11, 10, 9, 8, 15, 14, 13, 12,
                                               3, 2, 1, 0, 7, 6, 5, 4);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
 
@@ -2374,7 +2374,7 @@ inline void CoreSmallEnd1(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(13, 12, 15, 14, 9, 8, 11, 10,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
 
@@ -2387,7 +2387,7 @@ inline void CoreSmallEnd1(__m512i& input, __m512i& values){
         __m512i idxNoNeigh = _mm512_set_epi32(14, 15, 12, 13, 10, 11, 8, 9,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
 
@@ -2402,7 +2402,7 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                    __m512i& input_val, __m512i& input2_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2418,8 +2418,8 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                               15, 14, 13, 12, 11, 10, 9, 8);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xFF00, permNeighMax);
@@ -2438,8 +2438,8 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                               3, 2, 1, 0, 7, 6, 5, 4);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xF0F0, permNeighMax);
@@ -2458,8 +2458,8 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                               5, 4, 7, 6, 1, 0, 3, 2);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xCCCC, permNeighMax);
@@ -2478,8 +2478,8 @@ inline void CoreSmallEnd2(__m512i& input, __m512i& input2,
                                               6, 7, 4, 5, 2, 3, 0, 1);
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i tmp_input = _mm512_mask_mov_epi32(permNeighMin, 0xAAAA, permNeighMax);
@@ -2499,7 +2499,7 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2512,7 +2512,7 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2529,9 +2529,9 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2556,9 +2556,9 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2583,9 +2583,9 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2610,9 +2610,9 @@ inline void CoreSmallEnd3(__m512i& input, __m512i& input2, __m512i& input3,
         __m512i permNeigh = _mm512_permutexvar_epi32(idxNoNeigh, input);
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2637,7 +2637,7 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
                                    __m512i& input_val, __m512i& input2_val, __m512i& input3_val, __m512i& input4_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2650,7 +2650,7 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -2663,7 +2663,7 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2676,7 +2676,7 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -2694,10 +2694,10 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2728,10 +2728,10 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2762,10 +2762,10 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2796,10 +2796,10 @@ inline void CoreSmallEnd4(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh2 = _mm512_permutexvar_epi32(idxNoNeigh, input2);
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2831,7 +2831,7 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
                                    __m512i& input5_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input5);
         __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2844,7 +2844,7 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2857,7 +2857,7 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -2870,7 +2870,7 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -2883,7 +2883,7 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -2902,11 +2902,11 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2943,11 +2943,11 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -2984,11 +2984,11 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3025,11 +3025,11 @@ inline void CoreSmallEnd5(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh3 = _mm512_permutexvar_epi32(idxNoNeigh, input3);
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3066,7 +3066,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
                                    __m512i& input5_val, __m512i& input6_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input5);
         __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3079,7 +3079,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3092,7 +3092,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3105,7 +3105,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3118,7 +3118,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3131,7 +3131,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -3144,7 +3144,7 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3164,12 +3164,12 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3212,12 +3212,12 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3260,12 +3260,12 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3308,12 +3308,12 @@ inline void CoreSmallEnd6(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh4 = _mm512_permutexvar_epi32(idxNoNeigh, input4);
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3357,7 +3357,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
                                    __m512i& input5_val, __m512i& input6_val, __m512i& input7_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input5);
         __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3370,7 +3370,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3383,7 +3383,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -3396,7 +3396,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3409,7 +3409,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3422,7 +3422,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3435,7 +3435,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3448,7 +3448,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -3461,7 +3461,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3474,7 +3474,7 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3495,13 +3495,13 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3550,13 +3550,13 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3605,13 +3605,13 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3660,13 +3660,13 @@ inline void CoreSmallEnd7(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh5 = _mm512_permutexvar_epi32(idxNoNeigh, input5);
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3715,7 +3715,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
                                    __m512i& input5_val, __m512i& input6_val, __m512i& input7_val, __m512i& input8_val){
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input5, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input5);
         __m512i tmp_input5 = _mm512_max_epi32(input5, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input5_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3728,7 +3728,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3741,7 +3741,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -3754,7 +3754,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input4;
-        __m512i tmp_input4 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input4 = _mm512_min_epi32( inputCopy,input8);
         __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
         __m512i input4_val_copy = input4_val;
         input4_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input4, inputCopy, _MM_CMPINT_EQ ),
@@ -3767,7 +3767,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3780,7 +3780,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input3, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input3);
         __m512i tmp_input3 = _mm512_max_epi32(input3, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input3_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3793,7 +3793,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input2;
-        __m512i tmp_input2 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input2 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input2_val_copy = input2_val;
         input2_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input2, inputCopy, _MM_CMPINT_EQ ),
@@ -3806,7 +3806,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input;
-        __m512i tmp_input = _mm512_min_epi32(input2, inputCopy);
+        __m512i tmp_input = _mm512_min_epi32( inputCopy,input2);
         __m512i tmp_input2 = _mm512_max_epi32(input2, inputCopy);
         __m512i input_val_copy = input_val;
         input_val = _mm512_mask_mov_epi32(input2_val, _mm512_cmp_epi32_mask(tmp_input, inputCopy, _MM_CMPINT_EQ ),
@@ -3819,7 +3819,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input3;
-        __m512i tmp_input3 = _mm512_min_epi32(input4, inputCopy);
+        __m512i tmp_input3 = _mm512_min_epi32( inputCopy,input4);
         __m512i tmp_input4 = _mm512_max_epi32(input4, inputCopy);
         __m512i input3_val_copy = input3_val;
         input3_val = _mm512_mask_mov_epi32(input4_val, _mm512_cmp_epi32_mask(tmp_input3, inputCopy, _MM_CMPINT_EQ ),
@@ -3832,7 +3832,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input7, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input7);
         __m512i tmp_input7 = _mm512_max_epi32(input7, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input7_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3845,7 +3845,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input6;
-        __m512i tmp_input6 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input6 = _mm512_min_epi32( inputCopy,input8);
         __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
         __m512i input6_val_copy = input6_val;
         input6_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input6, inputCopy, _MM_CMPINT_EQ ),
@@ -3858,7 +3858,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input5;
-        __m512i tmp_input5 = _mm512_min_epi32(input6, inputCopy);
+        __m512i tmp_input5 = _mm512_min_epi32( inputCopy,input6);
         __m512i tmp_input6 = _mm512_max_epi32(input6, inputCopy);
         __m512i input5_val_copy = input5_val;
         input5_val = _mm512_mask_mov_epi32(input6_val, _mm512_cmp_epi32_mask(tmp_input5, inputCopy, _MM_CMPINT_EQ ),
@@ -3871,7 +3871,7 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
     }
     {
         __m512i inputCopy = input7;
-        __m512i tmp_input7 = _mm512_min_epi32(input8, inputCopy);
+        __m512i tmp_input7 = _mm512_min_epi32( inputCopy,input8);
         __m512i tmp_input8 = _mm512_max_epi32(input8, inputCopy);
         __m512i input7_val_copy = input7_val;
         input7_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input7, inputCopy, _MM_CMPINT_EQ ),
@@ -3893,14 +3893,14 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -3954,14 +3954,14 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -4016,14 +4016,14 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -4078,14 +4078,14 @@ inline void CoreSmallEnd8(__m512i& input, __m512i& input2, __m512i& input3, __m5
         __m512i permNeigh6 = _mm512_permutexvar_epi32(idxNoNeigh, input6);
         __m512i permNeigh7 = _mm512_permutexvar_epi32(idxNoNeigh, input7);
         __m512i permNeigh8 = _mm512_permutexvar_epi32(idxNoNeigh, input8);
-        __m512i permNeighMin = _mm512_min_epi32(permNeigh, input);
-        __m512i permNeighMin2 = _mm512_min_epi32(permNeigh2, input2);
-        __m512i permNeighMin3 = _mm512_min_epi32(permNeigh3, input3);
-        __m512i permNeighMin4 = _mm512_min_epi32(permNeigh4, input4);
-        __m512i permNeighMin5 = _mm512_min_epi32(permNeigh5, input5);
-        __m512i permNeighMin6 = _mm512_min_epi32(permNeigh6, input6);
-        __m512i permNeighMin7 = _mm512_min_epi32(permNeigh7, input7);
-        __m512i permNeighMin8 = _mm512_min_epi32(permNeigh8, input8);
+        __m512i permNeighMin = _mm512_min_epi32( input,permNeigh);
+        __m512i permNeighMin2 = _mm512_min_epi32( input2,permNeigh2);
+        __m512i permNeighMin3 = _mm512_min_epi32( input3,permNeigh3);
+        __m512i permNeighMin4 = _mm512_min_epi32( input4,permNeigh4);
+        __m512i permNeighMin5 = _mm512_min_epi32( input5,permNeigh5);
+        __m512i permNeighMin6 = _mm512_min_epi32( input6,permNeigh6);
+        __m512i permNeighMin7 = _mm512_min_epi32( input7,permNeigh7);
+        __m512i permNeighMin8 = _mm512_min_epi32( input8,permNeigh8);
         __m512i permNeighMax = _mm512_max_epi32(permNeigh, input);
         __m512i permNeighMax2 = _mm512_max_epi32(permNeigh2, input2);
         __m512i permNeighMax3 = _mm512_max_epi32(permNeigh3, input3);
@@ -4147,7 +4147,7 @@ inline void CoreSmallSort9(__m512i& input, __m512i& input2, __m512i& input3, __m
         __m512i permNeigh9 = _mm512_permutexvar_epi32(idxNoNeigh, input9);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
@@ -4223,10 +4223,10 @@ inline void CoreSmallSort10(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh10 = _mm512_permutexvar_epi32(idxNoNeigh, input10);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
@@ -4319,13 +4319,13 @@ inline void CoreSmallSort11(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh11 = _mm512_permutexvar_epi32(idxNoNeigh, input11);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
@@ -4431,16 +4431,16 @@ inline void CoreSmallSort12(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh12 = _mm512_permutexvar_epi32(idxNoNeigh, input12);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
         __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
-        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32( permNeigh12,input5);
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
         input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
@@ -4562,19 +4562,19 @@ inline void CoreSmallSort13(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh13 = _mm512_permutexvar_epi32(idxNoNeigh, input13);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
         __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
-        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32( permNeigh12,input5);
 
         __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh13,input4);
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
         input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
@@ -4710,22 +4710,22 @@ inline void CoreSmallSort14(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh14 = _mm512_permutexvar_epi32(idxNoNeigh, input14);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
         __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
-        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32( permNeigh12,input5);
 
         __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh13,input4);
 
         __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh14,input3);
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
         input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
@@ -4875,25 +4875,25 @@ inline void CoreSmallSort15(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh15 = _mm512_permutexvar_epi32(idxNoNeigh, input15);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
         __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
-        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32( permNeigh12,input5);
 
         __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh13,input4);
 
         __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh14,input3);
 
         __m512i tmp_input15 = _mm512_max_epi32(input2, permNeigh15);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh15);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh15,input2);
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
         input9_val = _mm512_mask_mov_epi32(input8_val, _mm512_cmp_epi32_mask(tmp_input9, permNeigh9, _MM_CMPINT_EQ ),
@@ -5058,28 +5058,28 @@ inline void CoreSmallSort16(__m512i& input, __m512i& input2, __m512i& input3, __
         __m512i permNeigh16 = _mm512_permutexvar_epi32(idxNoNeigh, input16);
 
         __m512i tmp_input9 = _mm512_max_epi32(input8, permNeigh9);
-        __m512i tmp_input8 = _mm512_min_epi32(input8, permNeigh9);
+        __m512i tmp_input8 = _mm512_min_epi32( permNeigh9,input8);
 
         __m512i tmp_input10 = _mm512_max_epi32(input7, permNeigh10);
-        __m512i tmp_input7 = _mm512_min_epi32(input7, permNeigh10);
+        __m512i tmp_input7 = _mm512_min_epi32( permNeigh10,input7);
 
         __m512i tmp_input11 = _mm512_max_epi32(input6, permNeigh11);
-        __m512i tmp_input6 = _mm512_min_epi32(input6, permNeigh11);
+        __m512i tmp_input6 = _mm512_min_epi32( permNeigh11,input6);
 
         __m512i tmp_input12 = _mm512_max_epi32(input5, permNeigh12);
-        __m512i tmp_input5 = _mm512_min_epi32(input5, permNeigh12);
+        __m512i tmp_input5 = _mm512_min_epi32( permNeigh12,input5);
 
         __m512i tmp_input13 = _mm512_max_epi32(input4, permNeigh13);
-        __m512i tmp_input4 = _mm512_min_epi32(input4, permNeigh13);
+        __m512i tmp_input4 = _mm512_min_epi32( permNeigh13,input4);
 
         __m512i tmp_input14 = _mm512_max_epi32(input3, permNeigh14);
-        __m512i tmp_input3 = _mm512_min_epi32(input3, permNeigh14);
+        __m512i tmp_input3 = _mm512_min_epi32( permNeigh14,input3);
 
         __m512i tmp_input15 = _mm512_max_epi32(input2, permNeigh15);
-        __m512i tmp_input2 = _mm512_min_epi32(input2, permNeigh15);
+        __m512i tmp_input2 = _mm512_min_epi32( permNeigh15,input2);
 
         __m512i tmp_input16 = _mm512_max_epi32(input, permNeigh16);
-        __m512i tmp_input = _mm512_min_epi32(input, permNeigh16);
+        __m512i tmp_input = _mm512_min_epi32( permNeigh16,input);
 
 
         __m512i input9_val_perm = _mm512_permutexvar_epi32(idxNoNeigh, input9_val);
